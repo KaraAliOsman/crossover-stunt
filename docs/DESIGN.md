@@ -180,37 +180,19 @@ their round payload. A first snapshot arriving just after a one-shot effect's ti
 that effect as already consumed, including during its live grace window; future effects retain
 their normal schedule.
 
-Rendering (single `requestAnimationFrame` loop, one canvas 1920×1080, transparent background):
+Rendering uses a single requestAnimationFrame loop at fixed 1920x1080. The transparent
+stand, global seam geometry and server-clock timeline remain unchanged. The v3 broadcast
+system below supersedes the older jumbotron visuals: matte cards, a two-team score bug,
+frameless preview, contextual lower thirds and an unboxed-stat finale on glass. The signature
+wave still starts each global column at revealAtMs + 600 + c * (2400 / cols), crossing A into B.
+Dirty card faces stay cached on an offscreen layer; a bounded crest adds lift, scale and light
+without repainting all cards. No chatter data is used to build any sprite.
 
-1. **Idle**: draw nothing (fully transparent).
-2. **Stand rises** on a new round (≈600 ms ease-out from bottom; reduced motion: instant).
-3. **Cards**: each of the 48×27 cards shows the color of the leaf covering it after applying
-   `stepsToShow` steps of this side's plan (replicate `stepsToShow` in JS exactly; it is tiny).
-   Maintain a `Uint8Array` of target colors; when it changes, flip the changed cards (scaleY
-   1→0→1 over 280 ms, color swaps at midpoint) with a stagger by distance from the split center.
-   Cards 36 px rounded 4 px with subtle top highlight; 4 px gaps stay transparent so the stream
-   shows through.
-4. **HUD** (top center pill): `<label> · <participants>/<quorum> · 0:21` + a progress bar;
-   SIMULATED badge top-left whenever `snapshot.simulated` (always visible, not subtle).
-5. **Minimap** (top-right, 32:9 for crossover, 16:9 single, ~6 px per card): both sides at their
-   current progress (render from both plans), seam line, own half outlined; label
-   `THEIR SIDE 7/12` under the other half.
-6. **WAITING FOR <other label>**: when own side ready and the other not, pulse own cards' brightness
-   and show a banner.
-7. **Joint reveal** at `revealAtMs`: zipper glow travels down the seam edge (A: right edge,
-   B: left edge) during the first 600 ms; then a wave sweeps left→right across the FULL image —
-   global column c flips to its final color at `revealAtMs + 600 + c × (2400 / cols)` ms, so it
-   crosses from A into B continuously; confetti (≤ 300 particles, pooled) and a synthesized roar
-   (Web Audio: filtered noise swell + low rumble, ~2.5 s, master gain ≤ 0.5) with caption
-   `[crowd roars]` bottom center. Title banner `<total> PEOPLE · 2 STREAMS` after the wave.
-8. **Timed-out**: banner `SO CLOSE · 9/12` (own side numbers; crossover shows both), cards stay at
-   their pre-reveal resolution, fade out after 6 s.
-9. **Complete**: retire the stand after the title hold/fade and a 4s pause (about 18s after reveal); hold=1 retains it until RESET or new CALL.
-10. Audio: OBS browser sources autoplay; in a normal browser show a small "click to enable sound"
-    chip until the first gesture. `mute=1` disables audio but keeps captions.
-
-Performance: precompute per-card leaf mapping incrementally per step; never allocate per frame
-except pooled particles; target 60 fps at 1080p in Chromium; `debug=1` shows fps.
+Idle/unused overlays remain transparent. Stand rise/drop, disconnect recovery, timeout hold,
+UNITE timing, auto-retirement/hold=1 and sound/caption schedules retain their existing behavior.
+SO CLOSE now desaturates/dims the cards before the contextual card enters. A reduced-motion
+path uses fades and brightness only, without the physical lift or scale. Debug frame costs are
+Chromium measurements, never evidence of OBS CEF performance.
 
 ## Control panel (`public/control/`) and dev page (`public/dev/`)
 
@@ -264,10 +246,10 @@ subjective and is recorded honestly in CODEX_LOG.
 ### Participation cues
 
 The opening 2.8 seconds show TYPE ANYTHING IN CHAT with the team labels and the spam rule.
-It becomes a persistent 28px chip below the HUD until the local side is ready. If the partner
+It becomes a quiet persistent pill below the score bug until the local side is ready. If the partner
 is ready first, the local overlay displays THEY'RE WAITING ON YOU and the exact remaining
 people count (singular for one). The ready side's WAITING FOR banner also shows the remaining
-count. Urgency pulses gently at 1.3 seconds; reduced motion keeps it static. Completion copy
+count. V3 urgency is steady; no pulse competes with the picture. Completion copy
 reports people across 2 STREAMS, plus CROSSED OVER only when that count is positive.
 
 ### Team label overrides
@@ -285,8 +267,8 @@ restart; channel identities and authentication are separate.
 Crossover defaults to UNITE (`unite=0` opts out; `fit=seam` always disables it). At reveal +
 600ms zipper + 2400ms wave + 500ms, the local half shrinks over 900ms and the partner half
 slides in after a 200ms delay. A cached 1920x540 final-colour canvas joins at y=270..810 on
-both streams. A 400ms seam flash and bounded burst mark the fit. The 76px title enters 300ms
-after fitting, centred at y=920. The artwork clears the rest of the stream; title/debug are
+both streams. A 400ms seam flash and bounded burst mark the fit. The stat end card enters 300ms
+after fitting, centred at y=908. The artwork clears the rest of the stream; title/debug are
 separate chrome, and the SIMULATED badge stays above the band, clear of full-bleed text. Reduced motion snaps to the
 joined image. Reload restores the composition without replaying bursts. Native per-card seam
 pixel tests explicitly use unite=0; dedicated default-mode tests check both joined halves.
@@ -312,8 +294,8 @@ a duplicate. A fake-transport regression covers CALL, A-ready help, RESET and re
 ### Reveal retirement
 
 In complete, the existing DROP starts after title hold + fade + 4000ms: reveal +18400ms for
-UNITE, +17700ms for separate halves/single. The joined band moves down as the stand drops;
-reduced motion clears immediately. hold=1 retains the picture until RESET/new CALL. The engine
+UNITE, +18300ms for separate halves/single. The joined band moves down as the stand drops;
+reduced motion fades out over 180ms. hold=1 retains the picture until RESET/new CALL. The engine
 stays complete and accepts the next CALL; reconnecting or duplicate complete snapshots cannot
 raise a retired overlay. Retirement uses server time including delayMs, not snapshot arrival time.
 
@@ -323,26 +305,23 @@ UNITE holds its title for 9 seconds (separate halves/single retain 10 seconds), 
 ### On-stream composition
 
 `fit=seam&scale=0.62` scales the native overlay (clamped 0.4..0.9) toward A's right edge or B's
-left edge, centred vertically. It always disables UNITE. A single fixed native canvas preserves
-the renderer's sprite/particle transforms before composition; full layout keeps the original
-render path. The edge card extends one pixel to the physical seam. No per-frame objects are
+left edge, centred vertically. It always disables UNITE. A fixed native canvas preserves card/wave transforms before composition; full layout keeps the original render path. V3 keeps the SIMULATED badge and captions at readable output size, boosts lower-third labels, and uses a compact two-row score bug below scale 0.65. That small layout omits the redundant thumbnail to preserve readable matchup counts. The edge card extends one pixel to the physical seam. No per-frame objects are
 allocated. `cutout=x,y,w,h` clears an integer native-canvas facecam rectangle after composition
-and draws a rounded 6px side-colour border at current visibility. Invalid rectangles are ignored;
+and draws a rounded 1px neutral hairline at current visibility. Invalid rectangles are ignored;
 valid ones clip to 1920x1080. Presets: 1440,700,440,340 and 40,700,440,340.
 
 Control On-stream layout radios rewrite A, local B and partner B URLs and Copy values, while
 preserving the private room token. Layout choices stay local to that panel session and do not
 change server/engine state. Parser properties cover clipping; browser tests check transparency,
-border colours, physical seam anchoring, UNITE suppression and native-render equivalence.
+neutral border alpha, physical seam anchoring, UNITE suppression and native-render equivalence.
 
 Facecam layouts move any intersecting participation/result banner to a clear vertical slot.
-For the bottom-corner presets, the waiting banner moves to the centre and the UNITE title moves
-above the picture band. Bounds include the urgency pulse and glow. This prevents the requested
+For the bottom-corner presets, the waiting banner moves to a clear upper slot and the UNITE end card moves
+above the picture band. V3 bounds exclude transparent shadow bleed and use the actual glass body. This prevents the requested
 post-draw camera clear from cutting critical words. Custom holes that cover every candidate slot
 can still occlude chrome; the host controls that crop. No per-frame layout objects are created.
 
-The facecam UNITE title keeps the 76px count and crossover line while omitting its team-label
-kicker, fitting above the central band; the normal UNITE layout retains all three lines.
+The compact facecam UNITE end card uses a 1080px body, fitting above the central band; its stat numbers and labels retain the shared type system.
 
 Participation banners are suppressed once UNITE starts, including a catch-up snapshot that jumps
 straight from active to a past reveal. A fading stale waiting cue cannot obscure the joined image.
@@ -353,7 +332,107 @@ Control defaults are remembered per mode: channel-name A + B in crossover, HEART
 explicit selections survive mode switches. The showcase imports the same pure artwork source
 as the browser (public/control/artwork.js), which ships beside dist/, eliminating the duplicated
 shape mirror. HYPE splits HY | PE across the seam; so-close and solo use GG. Early-refinement
-crops are saved with the visual checks. Completion copy is CROSSED OVER TO HELP THE OTHER SIDE
-when positive, otherwise NEITHER CHAT COULD DO IT ALONE, preserving the 76/92px title variants.
+crops are saved with the visual checks. V3 replaces the earlier completion-copy banner with PEOPLE, STREAMS and CROSSED OVER stats; zero retains NEITHER CHAT COULD / DO IT ALONE.
 The simulation badge sits above UNITE artwork or below the finished native half, keeping text
 presets readable; the left camera preset uses the opposite corner for that native badge.
+
+## Broadcast visual system v3 (2026-11-01)
+
+The picture owns the stage. UI panels use rgba(11,13,16,0.80), a 1px white 10% hairline,
+a 6% top highlight and one black 45% shadow (40px blur, 12px offset). Cached sprites include
+64px transparent bleed, preventing the rectangular shadow clipping seen in the first review.
+Panels have 16px radii; pills use half-height radii; matte card faces use 5px. Glass bodies
+stay within the 64px title-safe area. Primary text is #F4F5F7, secondary #B7BAC0. Over 80%
+glass on a pure-white stream these measure 9.96:1 and 5.58:1; team orange/sky measure 4.82:1
+and 4.71:1. Team names retain full palette colour to preserve this contrast; partner counts
+use the requested 64% opacity. Team colour otherwise appears in small chips and 3px fills.
+There are no coloured panel outlines, bevels, scanlines or panel glows.
+
+Archivo Variable is self-hosted for expanded headlines and quiet labels; Geist Mono Variable
+is used for data and rolling digits. Type roles are centralized in overlay/typography.js:
+display 72/800/expanded (fits down to 40, then narrows to normal before ellipsis), small headline 38/750/semi-expanded, label 16/650,
+meta 20/500, data 26-28/550, stats 96/600 and captions 28/500. Canvas fontStretch uses supported
+keywords, with a normal-width fallback in older CEF. Every used face/weight is loaded through
+document.fonts.load; one font-ready refresh invalidates cached sprites after the initial frame.
+Font sources are same-origin under an explicit font-src self CSP. OFL licenses ship with them. Canonical public/fonts assets have byte-identical deployment copies under public/overlay/fonts, letting remote B load them through the existing overlay-only cookie boundary without changing access policy. Tools import the same overlay font stylesheet. The HTTP test pins byte equality and authorized/unauthorized partner reads.
+
+The score bug is a 72px pill centred on the seam: both team labels, fixed count slots and a
+central clock. Digits roll individually over 180ms from a fixed glyph atlas, so clocks/counts
+never measure or rasterize text during animation. Counts reserve the quorum's digit width;
+long team labels ellipsize before entering their numeric slot. Ready shows a green check and
+READY, with a 6px ink-to-stroke gap and the check's low point on the count baseline. Those metrics are cached with the glyph atlas. Last-ten-second clocks take priority for the action accent, quieting the lagging headline when both are present. A quiet TYPE ANYTHING IN CHAT pill
+persists until the local side is ready. The thumbnail is frameless with a neutral hairline,
+a 1px seam and fine hatching on the unknown partner half. Its label row has a quiet glass
+backing, added after review found the text disappearing over pale cards.
+
+Intro, waiting, lagging and SO CLOSE share a 1240px maximum glass body with 40px horizontal
+padding and three centred tiers. At y=908 the 184px body begins at y=816, below the joined
+picture's 270-810 band; facecam exclusion can move it to the clear upper region. Labels fit
+then ellipsize. One headline span carries the accent; meta stays secondary. The code-drawn
+brand mark consists of two half-squares meeting at a 2px seam. The SIMULATED badge stays
+unmistakable on visible demo stands, with a small diagonal hatch stripe and calm data type.
+Closed captions use the original sound schedule in a black 82% box above the bottom safe line.
+
+Card atlas faces have at most 8% top white fading by 40% height, a 1px 18%-darker bottom edge,
+and deterministic 2.5% grain. Seam reference centres stay exact palette pixels. Flips project
+abs(cos(theta)) vertically, swap at 90 degrees, shade edge-on and land with a 90ms glint capped
+at 35%. The existing dirty-card layer remains. A physical crest lifts 10px, expands to 1.06,
+adds 14% light and settles once with a 1.6px overshoot. Only its 420ms column window is redrawn
+(at most 18 crossover columns); the final face flips in behind the crest. Reduced motion uses
+fades plus a 400ms brightness window per column, without lift/scale. The seam cue is a thin
+paper-white zipper, leaving the stadium wave as the signature gesture.
+
+Shared motion.js holds the 320ms entrance, 180ms exit, 200ms content crossfade/2px blur,
+180ms digit roll, 240ms progress, 900ms finale count and 60ms stat stagger. Cubic-bezier
+(.23,1,.32,1) and (.77,0,.175,1) are solved once into LUTs. Panels enter from 16px below,
+minimum scale .96; reduced motion removes translation/scale. No UI bounces or pulses remain.
+The finale keeps its centred eyebrow free of a detached logo. Its three tabular stats use neutral separators; zero crossovers replaces its third
+stat with NEITHER CHAT COULD / DO IT ALONE. Single mode has PEOPLE and CARD STUNT COMPLETE.
+Confetti is capped at 140 smaller, dragged pieces in the two team colours and paper, drawn
+behind text and clipped to the picture band during UNITE.
+
+Control/dev use #0A0B0D pages, #111317 panels, neutral 7% borders and 14px radii. The matchup
+and whole-picture preview lead the control surface. Each count aligns beneath its team name, with people as a quiet baseline suffix. Call the stunt is one 56px near-white
+button; active rounds replace it with a disabled running state and a hairline time bar.
+Reset round is secondary and retains its deliberate second-click confirmation. Duration
+remains visible; the existing quorum controls sit in a closed native Advanced disclosure.
+Tiles letterbox the artwork and mark the seam; selection is a neutral 2px ring. Focus rings
+are 2px accent with 2px offset; pointer hover is gated and reduced motion respects OS settings.
+
+Evidence and individual screenshot critique live under test-results/design/, including the
+real SIMULATED A/B sequence, preset/long-label checks, contact sheet, font and frame-time data.
+No redesign validation here proves 60fps or audio behavior in OBS. Engine, protocol, Twitch
+service and server round behavior remain unchanged; the only server edit is the font CSP.
+
+The minimum seam-fit review found that uniformly scaling 16px labels produced unreadable
+microtext at 720p. V3 now compensates lower-third meta/stat labels for the composition scale,
+uses an 80px output-size two-row score bug below scale 0.65, and keeps demo identification and
+closed captions in output coordinates. The thumbnail is omitted in that compact layout;
+both teams and exact counts remain in the score bug. Card pitch, seam anchoring, facecam
+holes and all server timestamps still use the original composition transform. A 200px stat
+body at native y=916 preserves the picture-band and title-safe clearances. The calmer 56px
+SIMULATED pill fits below native text artwork at y=960..1016, clear of the letters.
+
+Native-half/single/seam finale stats enter 600ms after the wave, once the unchanged roar-caption
+window clears. UNITE retains its later entrance. This avoids caption/label overlap in the lower
+third and places native retirement at reveal+18.3s (UNITE remains 18.4s). The three layout timing
+cases verify both the visible caption-only beat and the subsequent stat-only beat.
+
+### HUD corrections after the v3 live stream
+
+The operator's real two-channel OBS 33 recordings exposed truncated waiting names,
+a READY clock during reveal, and HUD type that was too small at 720p. Waiting
+headlines now fit from 72px down to 40px and then narrow from expanded through
+semi-expanded to normal before ellipsis. Full fitting names retain the team-colour
+span; only near-maximum labels can need ellipsis. Regression fixtures include the
+two 10-character channel labels and defensive 25-character labels without changing
+the server's 24-character input limit.
+
+HUD labels are 18px (20px in the compact two-row layout), counts/clocks 34px and
+the hint 16px. The crossover width stays fixed to avoid the preview; native height
+is 72px, compact height 80px. The hint retains an 8px gap. Single mode reserves a
+wider clock column. Existing viewport and seam transforms are unchanged. While
+revealing, the centre reads REVEAL in the accent; both team counts retain their
+checks and READY. The bug still fades out over 180ms at the scheduled reveal.
+Non-reveal exits blank the centre instead of flashing REVEAL. No font measurement
+or sprite rebuilding was added to the animation path.

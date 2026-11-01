@@ -92,7 +92,7 @@ The entrypoint binds loopback only. The simulator generates local virtual IDs; i
 - `/director` with two Twitch embeds for recording; optional `?delayMs=` for differing broadcast latency.
 - Playwright pixel seam comparison, capture contact sheet and real OBS frame measurements.
 - Inform host about slow/followers-only chat restrictions without adding unnecessary moderation scopes.
-- Locally bundled OFL pixel font with license if used; overlays and controls currently use system fonts (no font files are bundled).
+- Self-hosted Archivo and Geist Mono under OFL 1.1 are bundled for the v3 broadcast package; the artwork generator retains its original bitmap pixel font. Font licenses ship with the assets.
 
 ### Won't for this entry
 

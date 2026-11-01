@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Crossover Stunt — Control</title>
+    <link rel="stylesheet" href="/fonts.css" />
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="/control/control.css" />
     <script type="module" src="/control/control.js"></script>
@@ -22,6 +23,7 @@
         </div>
       </div>
       <div class="topbar-status">
+        <span id="connection-pill" class="chip">Connecting</span>
         <span id="phase-chip" class="chip phase-chip" data-phase="idle">Idle</span>
         <span id="server-status" class="server-status" data-state="connecting"
           >Connecting to server…</span
@@ -38,7 +40,7 @@
         <!-- STUNT: live scoreboard, round settings, CALL / RESET -->
         <section id="stunt" class="card stunt-card" aria-labelledby="stunt-title" tabindex="-1">
           <div class="card-head">
-            <h2 id="stunt-title">Stunt</h2>
+            <h2 id="stunt-title">The matchup</h2>
             <span id="round-mode" class="card-meta">No round yet</span>
           </div>
 
@@ -94,6 +96,10 @@
               </div>
             </div>
           </div>
+          <figure class="matchup-picture">
+            <canvas id="matchup-preview" role="img" aria-label="Selected whole picture"></canvas>
+            <figcaption>THE WHOLE PICTURE <span>A | B</span></figcaption>
+          </figure>
           <p id="round-summary" class="round-summary"></p>
 
           <form id="stunt-form" class="stunt-form" novalidate>
@@ -114,80 +120,84 @@
                   >
                 </div>
               </fieldset>
-              <div class="field">
-                <label for="min-quorum">Minimum people</label>
-                <input
-                  id="min-quorum"
-                  type="number"
-                  min="1"
-                  max="1000"
-                  step="1"
-                  value="3"
-                  inputmode="numeric"
-                  aria-describedby="quorum-hint"
-                />
-              </div>
-              <div class="field">
-                <label for="quorum-ratio">Share of recent chatters</label>
-                <div class="input-suffix">
-                  <input
-                    id="quorum-ratio"
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    value="40"
-                    inputmode="numeric"
-                    aria-describedby="quorum-hint"
-                  />
-                  <span aria-hidden="true">%</span>
+              <details class="advanced">
+                <summary>Advanced</summary>
+                <div class="advanced-fields">
+                  <div class="field">
+                    <label for="min-quorum">Minimum people</label>
+                    <input
+                      id="min-quorum"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      step="1"
+                      value="3"
+                      inputmode="numeric"
+                      aria-describedby="quorum-hint"
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="quorum-ratio">Share of recent chatters</label>
+                    <div class="input-suffix">
+                      <input
+                        id="quorum-ratio"
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value="40"
+                        inputmode="numeric"
+                        aria-describedby="quorum-hint"
+                      />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                  </div>
+                  <fieldset class="field overrides">
+                    <legend>Fixed quorum <span class="optional">optional</span></legend>
+                    <div class="override-row">
+                      <label class="check"
+                        ><input type="checkbox" id="override-A-on" /> <span>A</span></label
+                      >
+                      <input
+                        id="override-A"
+                        type="number"
+                        min="1"
+                        max="1000"
+                        step="1"
+                        value="10"
+                        inputmode="numeric"
+                        aria-label="Fixed quorum for side A"
+                        disabled
+                      />
+                      <label class="check"
+                        ><input type="checkbox" id="override-B-on" /> <span>B</span></label
+                      >
+                      <input
+                        id="override-B"
+                        type="number"
+                        min="1"
+                        max="1000"
+                        step="1"
+                        value="10"
+                        inputmode="numeric"
+                        aria-label="Fixed quorum for side B"
+                        disabled
+                      />
+                    </div>
+                  </fieldset>
+                  <p id="quorum-hint" class="hint">
+                    Each side needs max(minimum, share × people who chatted recently) distinct
+                    people, frozen when you CALL. A fixed quorum replaces that for its side.
+                  </p>
                 </div>
-              </div>
-              <fieldset class="field overrides">
-                <legend>Fixed quorum <span class="optional">optional</span></legend>
-                <div class="override-row">
-                  <label class="check"
-                    ><input type="checkbox" id="override-A-on" /> <span>A</span></label
-                  >
-                  <input
-                    id="override-A"
-                    type="number"
-                    min="1"
-                    max="1000"
-                    step="1"
-                    value="10"
-                    inputmode="numeric"
-                    aria-label="Fixed quorum for side A"
-                    disabled
-                  />
-                  <label class="check"
-                    ><input type="checkbox" id="override-B-on" /> <span>B</span></label
-                  >
-                  <input
-                    id="override-B"
-                    type="number"
-                    min="1"
-                    max="1000"
-                    step="1"
-                    value="10"
-                    inputmode="numeric"
-                    aria-label="Fixed quorum for side B"
-                    disabled
-                  />
-                </div>
-              </fieldset>
+              </details>
             </div>
-            <p id="quorum-hint" class="hint">
-              Each side needs max(minimum, share × people who chatted recently) distinct people,
-              frozen when you CALL. A fixed quorum replaces that for its side.
-            </p>
-
             <div class="call-row">
               <button type="submit" id="call-btn" class="btn btn-call" aria-describedby="call-sub">
-                <span class="btn-call-label">CALL</span>
+                <span class="btn-call-label">Call the stunt</span>
                 <span class="btn-call-sub" id="call-sub">45 s · both chats</span>
               </button>
-              <button type="button" id="reset-btn" class="btn btn-reset">RESET</button>
+              <button type="button" id="reset-btn" class="btn btn-reset">Reset round</button>
             </div>
             <p id="call-blocker" class="hint call-blocker" hidden></p>
             <p id="stunt-error" class="msg msg-error" role="alert" hidden></p>

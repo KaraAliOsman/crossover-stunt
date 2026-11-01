@@ -2,10 +2,10 @@
 // seam zipper glow, whose gradients are rendered once into sprites.
 import { HEIGHT, WIDTH, createCanvas, roundRectPath, withAlpha } from './draw.js';
 
-export const MAX_CONFETTI = 300;
+export const MAX_CONFETTI = 140;
 
 const GRAVITY = 1500; // px/s²
-const DRAG = 0.9; // velocity kept per second (air resistance)
+const DRAG = 0.55; // velocity kept per second (air resistance)
 const LIFETIME_S = 4.2;
 
 /** Fixed pool of confetti pieces; dead pieces are recycled by the next burst. */
@@ -23,12 +23,12 @@ export class Confetti {
     this.color = new Uint8Array(MAX_CONFETTI);
     this.alive = new Uint8Array(MAX_CONFETTI);
     this.count = 0;
-    this.colors = ['#f0e442', '#e69f00', '#56b4e9', '#009e73', '#d55e00', '#f5f5f0'];
+    this.colors = ['#e69f00', '#56b4e9', '#f5f5f0'];
   }
 
   setPalette(palette) {
     // Bright palette entries only (skip ink and the deep blue, which vanish on dark streams).
-    const bright = [5, 2, 3, 4, 7, 1].filter((index) => index < palette.length);
+    const bright = [2, 3, 1].filter((index) => index < palette.length);
     if (bright.length > 0) this.colors = bright.map((index) => palette[index]);
   }
 
@@ -55,7 +55,7 @@ export class Confetti {
       this.angle[i] = Math.random() * Math.PI * 2;
       this.spin[i] = (Math.random() * 2 - 1) * 9;
       this.flutter[i] = Math.random() * Math.PI * 2;
-      this.size[i] = 10 + Math.random() * 10;
+      this.size[i] = 5 + Math.random() * 6;
       this.age[i] = 0;
       this.color[i] = Math.floor(Math.random() * this.colors.length);
       this.alive[i] = 1;
@@ -114,10 +114,10 @@ const ZIPPER_TRAVEL_MS = 600;
 const ZIPPER_FADE_MS = 900;
 /** Zipper lifetime after revealAtMs: travel down the seam, then fade. */
 export const ZIPPER_TOTAL_MS = ZIPPER_TRAVEL_MS + ZIPPER_FADE_MS;
-const GLOW_WIDTH = 140;
-const HEAD_SIZE = 320;
+const GLOW_WIDTH = 44;
+const HEAD_SIZE = 96;
 const TOOTH_PITCH = 20;
-const CORE_WIDTH = 5;
+const CORE_WIDTH = 2;
 
 /**
  * Seam zipper: a bright head travels down the seam edge during the first 600 ms of the reveal,
@@ -133,7 +133,7 @@ export class Zipper {
   }
 
   setPalette(palette) {
-    const glowColor = palette[5] ?? '#f0e442';
+    const glowColor = palette[1] ?? '#f4f5f7';
     const coreColor = palette[1] ?? '#f5f5f0';
     const ink = palette[0] ?? '#101820';
     this.core = coreColor;

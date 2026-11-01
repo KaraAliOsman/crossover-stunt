@@ -5,9 +5,8 @@
 export const WIDTH = 1920;
 export const HEIGHT = 1080;
 
-/** Heavy system stack: Segoe UI Black on Windows, SF on macOS, Roboto/Cantarell on Linux. */
-export const FONT_STACK =
-  'system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif';
+/** Self-hosted broadcast face; a system fallback keeps the first OBS frame usable. */
+export const FONT_STACK = '"Archivo", system-ui, sans-serif';
 
 /** Fallback colors (same order as PALETTE in src/engine/artwork.ts) until a round arrives. */
 export const DEFAULT_PALETTE = Object.freeze([
@@ -109,14 +108,6 @@ export function easeOutCubic(t) {
 
 export function easeInCubic(t) {
   return t * t * t;
-}
-
-/** Slight overshoot for banner entrances. */
-export function easeOutBack(t) {
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  const u = t - 1;
-  return 1 + c3 * u * u * u + c1 * u * u;
 }
 
 /** Moves `current` toward `target` at `perMs` units per millisecond (frame-rate independent). */

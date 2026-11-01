@@ -502,3 +502,179 @@ both 3100/3197, and all three owned server PIDs were absent. No commands or API 
 server, no real Twitch messages were sent, and no commits/pushes/tags were made. OBS CEF,
 real Twitch and audio-by-ear remain unverified. Only local Chromium/SIMULATED behavior is
 claimed here.
+
+## 2026-11-01 - Broadcast v3 redesign and final capture-review polish
+
+OpenAI Codex session/thread: `01a194b7-1fa1-7df1-9213-da7b4c07bf8b`, read from
+`CODEX_SESSION_ID` and `CODEX_THREAD_ID`. Implemented `entrega/codex-v3/BRIEF.md`
+and the follow-up review in the same session, using the repository's
+`overlay-visual-check` and `stunt-engine` instructions, plus the frontend-design
+and animate skills. This entry covers the complete v3 change; earlier entries are
+historical evidence for earlier packages.
+
+Built a restrained broadcast package: self-hosted OFL Archivo and Geist Mono,
+central typography/motion tokens, neutral glass with shadow bleed, fixed-width
+rolling matchup counts, a quiet CTA, hatched whole-picture previews with correct
+B attribution, unified lower thirds, calm SIMULATED identification and closed
+captions. Font readiness triggers one cached-sprite refresh. Remote fonts and
+licenses have byte-identical copies under the existing protected overlay asset
+boundary; the only server behavior edit is explicit `font-src 'self'` CSP.
+Two damaged server comments were repaired without changing their code.
+
+Matte card atlases now include bounded deterministic 2.5% grain, a cosine flip
+with midpoint face swap, edge shading and a short landing glint. The shared-clock
+wave lifts 10px, scales to 1.06 and settles once with a 1.6px overshoot; its window
+is bounded to 18 columns and texture drawing is batched. Finale stats count and
+stagger in; zero crossovers retains the cooperation explanation. SO CLOSE dims
+and desaturates. Reduced motion uses fades/brightness, and fewer dragged confetti
+pieces stay behind the copy. Engine timing, sound and caption scheduling remain
+unchanged. A 600ms post-wave stat delay clears the native/single/seam caption;
+native retirement is reveal+18.3s and UNITE reveal+18.4s.
+
+Control/dev now share the fonts, surfaces and focus/motion tokens. Matchup and
+whole-picture preview lead; CALL is the white primary action/running bar; Reset
+keeps its quiet two-click confirmation. Advanced quorum settings start closed,
+and invalid hidden inputs open the disclosure before focus. Picker tiles use
+neutral selection rings. Minimum seam scale uses an output-size two-row score
+bug, readable badges/captions, compensated result labels and a three-line zero
+explanation. The redundant tiny thumbnail is omitted there. README credits and
+verification claims, DESIGN's visual system and SPEC were updated.
+
+The final user review added three polish fixes: READY's check reserves 6px from
+the cached glyph ink and sits on the count baseline; control counts align under
+their team names with people as a quiet baseline suffix; the detached finale logo
+was removed so its eyebrow stays centred. No per-frame text measurement was added.
+
+Added four unit tests (font/CSP/protected asset equality plus motion bounds,
+including 1,000-run seeded fast-check), and twelve browser tests across the v3
+work: real capture sequence, font loading/24-character labels/hot-frame budget,
+all presets, matte flip/grain/reduced fade, three caption-clearance layouts,
+preview attribution, minimum-seam zero fit, READY ink spacing/baseline in normal
+and compact layouts, and matchup name/count alignment at 1080p and 720p. Existing
+pixel/copy/layout/control timing assertions were updated; privacy and A|B seam
+checks remain in place.
+
+Final full verification, after the three polish fixes, used
+`test-results/verification/run.ps1 broadcast-v3-polish` with
+`V3_POLISH_CAPTURE=1` for selective curated captures. All three relevant Playwright
+projects ran: demo, overlay-render and control. Seven commands exited 0:
+
+| Command                          | Exact result                                 |
+| -------------------------------- | -------------------------------------------- |
+| `pnpm format`                    | exit 0                                       |
+| `pnpm typecheck`                 | exit 0                                       |
+| `pnpm test`                      | exit 0; 260 passed in 17 files               |
+| `pnpm lint`                      | exit 0; all matched files use Prettier style |
+| `pnpm test:e2e --max-failures=1` | exit 0; 77 passed in 10.6 minutes            |
+| `pnpm build`                     | exit 0                                       |
+| `pnpm verify:server`             | exit 0; 17 PASS checks                       |
+
+Per-command outputs and explicit exits are in
+`test-results/verification/broadcast-v3-polish-*.log`. The compiled demo smoke
+(`powershell -NoProfile -ExecutionPolicy Bypass -File test-results/codex-fixes/compiled-demo.ps1`)
+also exited 0: 27 assertions covering shared artwork/static routes and all three
+showcase presets. It started an owned credential-free server on 3197, verified
+its command line with Get-CimInstance and stopped PID 26132. Output:
+`test-results/design/compiled-demo-polish.log`. The earlier compiled smoke also
+passed 27 assertions and stopped owned PID 82172.
+
+The earlier complete pre-polish run also exited 0 for all seven required commands:
+260 unit tests, 75 browser tests and 17 server checks
+(`test-results/verification/broadcast-v3-verified-*.log`). Earlier failed attempts
+were corrected rather than counted as passing: formatting, a flip assertion that
+ignored intended edge shading, timeout/retirement assertions using old timing,
+and minimum-seam zero text that was too small. The final polish preflight first
+found a 10px visible tick gap caused by atlas padding; cached ink metrics corrected
+it. A new control test initially evaluated a function string incorrectly; the
+page expression was corrected. Both polish regressions then passed (2/2).
+
+Visual evidence: `test-results/design/contact-sheet.png` indexes 35 source
+captures; `test-results/design/critique.md` gives each image a judgment, records
+the iterations and states accepted tradeoffs. `captures.json` records exact source
+hashes/dimensions. The initial 35 sources and contact sheet were each opened
+individually. The final follow-up opened only four downscaled PNG views, under
+the requested image budget, in `test-results/design-polish-review/`: control,
+score, finale and final-review. The latter includes the corrected control detail
+and refreshed contact sheet. The initial review-detail crop missed the counts;
+the artifact was corrected in the fourth view. The product did not need another
+change. Curated intro/wave/timeout/dev/long-label captures were preserved.
+
+The visual iterations fixed clipped sprite shadows, pale-background thumbnail
+labels, incorrect B attribution, scrolled control captures, unreadable small-seam
+copy, native caption/stat collision and the zero-crossover explanation. Final
+READY checks separate cleanly on every preset; the count/name stacks and suffixes
+read as one group; the finale eyebrow is balanced in full/single/facecam/minimum
+layouts. Accepted limits: some lower native artwork rows meet the lower third
+(including BOSS's decorative bottom bar); minimum-seam supporting text remains
+compact; a deliberate facecam hole can remove artwork while critical copy moves
+clear of the preset holes. No further visual iteration was warranted.
+
+Latest real-clock Chromium sample at 1920x1080 and n=3000 per side:
+idle 53.409 fps / p95 33.3ms / 81 frames;
+static 57.525 fps / p95 16.8ms / 116 frames;
+flips/reveal 43.381 fps / p95 33.4ms / 261 frames.
+Maximum reported update/draw window average 9.7895ms, worst JS frame
+12.7ms, observed crest 16 columns (bound 18), reported rounded heap
+10,000,000 bytes. Source: `test-results/design/frame-pacing.json`. The earlier
+full sample was 46.576 active fps and is preserved in `frame-pacing-pre-polish.json`;
+the focused preflight was 49.53. These varying samples support no sustained-60fps
+or causal performance claim. OBS CEF/game-load frame delivery still needs a real
+rehearsal; the v3 visual package has Chromium validation only.
+
+The four frozen contract SHA256 values match the task-start manifest. All 22
+snapshot files under engine/shared/Twitch/sim remain byte-identical; the engine
+stays pure. All 44,256 historical CODEX_LOG bytes were preserved before this one
+append. Final prefix/hash/source checks are reproducible with
+`test-results/design/integrity.py` and recorded in `integrity.json`.
+
+Owned PIDs 61288, 26132 and 82172 are absent. Windows transiently listed 3197 with
+OwningProcess 0, and the first Python timeout probe returned WSAEWOULDBLOCK; no
+process-0 stop was attempted. Direct Node TCP probes confirmed ECONNREFUSED on
+both 3100 and 3197. No action or API request targeted the existing port-3000
+server, no real Twitch messages were sent, no credentials were opened, and no
+commit/push/tag/remote operation was performed. OBS rehearsal, live Twitch with
+this redesign, audio-by-ear and sustained 60fps remain unverified. Earlier live
+evidence applies to the previous package, as README now states.
+
+## 2026-11-01 - HUD fixes from the real two-channel v3 stream
+
+OpenAI Codex session/thread `01a194b7-1fa1-7df1-9213-da7b4c07bf8b`, from
+CODEX_SESSION_ID and CODEX_THREAD_ID. These defects were found during the
+operator's real two-channel Twitch stream of v3: efaoangssm + efaoangsam, OBS 33,
+real chats. I inspected only the three supplied recording crops:
+`live-waiting-A.png`, `bug-wait.png`, `bug-wave.png`.
+
+Production edits are confined to hud.js and its stage call site. Waiting text
+shrinks to 40px, then narrows toward normal width before ellipsis; fitting names
+retain their team colour. Reveal now shows accent REVEAL between checked READY
+sides; other exits blank the clock. The scheduled fade remains. Labels are 18px
+(compact 20px), counts/clock 34px and hint 16px, with taller glass and an 8px hint
+gap. Preview clearance and viewport/seam transforms remain unchanged. Updated
+README/DESIGN with the live-stream provenance and new HUD rules.
+
+Three new layout regressions cover both 10-character logins, wide/narrow
+25-character fixtures, text bounds/colour, font minima, six rendered accent
+REVEAL glyphs, READY sides and clean exits at 1080p, 720p and minimum seam fit.
+The existing tick crop was enlarged for the new type; hot-frame caching checks
+remain. A focused run passed 5/5 after choosing 18px native labels to fit both
+logins.
+
+Commands: `pnpm format`, `pnpm typecheck`, `pnpm test` (260/17 files),
+`pnpm lint`, and `pnpm build` exited 0. Browser coverage: 9/9 demo tests passed in
+the combined run; that command exited 1 on an existing `pauseAt` navigation race.
+Both isolated harnesses now pause before navigation. The full rerun
+`pnpm test:e2e --project=overlay-render --max-failures=1` exited 0, 60/60 passed,
+including the three new regressions: 69 relevant browser cases in total. No
+production behavior or assertion was relaxed for the clock repair. Exact outputs
+are in `test-results/live-hud-fixes/{final-*,test,summary}.log`.
+
+Curated 12 affected active/waiting/maximum-label/reveal captures under
+`test-results/live-hud-fixes/`; reviewed in four downscaled PNG views, including a final waiting-only sheet
+after the harness clock repair.
+Full names retain blue emphasis, enlarged chrome clears the preview, and only
+the widest maximum fixture needs ellipsis. Judgments are in `critique.md`.
+
+Frozen contracts and every historical log byte are preserved. Owned test servers
+are absent by PID/port checks; cleanup evidence is in this capture
+directory. Port 3000 was untouched, no real Twitch messages were sent, and no git
+operation was performed. The corrections still await a subsequent live OBS check.

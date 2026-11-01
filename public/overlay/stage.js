@@ -11,8 +11,6 @@ import {
   clamp01,
   easeInCubic,
   createCanvas,
-  roundRectPath,
-  easeOutBack,
   easeOutCubic,
   shade,
   withAlpha,
@@ -24,12 +22,15 @@ import {
   HudPill,
   Minimap,
   buildBanner,
+  buildFinale,
+  drawFinaleNumbers,
   buildCaption,
   buildDebug,
   buildSimulatedBadge,
   drawCentered,
   spriteBuildCount,
 } from './hud.js';
+import { EASE_OUT, EASE_IN_OUT, MOTION } from './motion.js';
 import { PlanReplay, SEEK_NONE, SEEK_REBUILT, finalColors, stepsToShow } from './plan.js';
 
 // Timeline (docs/DESIGN.md §Overlay). All values in milliseconds.
@@ -58,11 +59,11 @@ const RIPPLE_MS_PER_CARD = 14;
 const RIPPLE_MAX_MS = 380;
 const STEP_SPACING_MS = 110;
 const BATCH_SPREAD_MS = 900;
-const BANNER_ALTERNATES = Object.freeze([520, 140, 920]);
-const UNITE_TITLE_ALTERNATES = Object.freeze([140, 520, 714]);
-const BANNER_Y = Math.round(HEIGHT * 0.66);
+const BANNER_ALTERNATES = Object.freeze([908, 174, 520]);
+const UNITE_TITLE_ALTERNATES = Object.freeze([174, 908, 520]);
+const BANNER_Y = 908;
 const STAND_CODES = Object.freeze({ down: 0, rising: 1, up: 2, dropping: 3 });
-const FRAME_KEY_SIZE = 27;
+const FRAME_KEY_SIZE = 31;
 const UNITE_DELAY_MS = 500;
 const UNITE_FIT_MS = 900;
 const CTA_MS = 2_800;
@@ -120,8 +121,10 @@ export class Stage {
     unite = true,
     hold = false,
     occlusion = null,
+    compositionScale = 1,
   }) {
     this.side = side;
+    this.compositionScale = compositionScale;
     this.unite = unite;
     this.hold = hold;
     this.occlusion = occlusion;
@@ -148,7 +151,7 @@ export class Stage {
     this.grid = new CardGrid();
     this.confetti = new Confetti();
     this.zipper = new Zipper();
-    this.hud = new HudPill();
+    this.hud = new HudPill(compositionScale);
     this.minimap = new Minimap();
     this.badge = null;
     this.caption = buildCaption('[crowd roars]');
@@ -158,7 +161,9 @@ export class Stage {
       this.#buildWaiting(label, color, remaining),
     );
     this.introBanner = new CachedSprite((mode, a, b) => this.#buildIntro(mode, a, b));
-    this.lagBanner = new CachedSprite((label, remaining) => this.#buildLagging(label, remaining));
+    this.lagBanner = new CachedSprite((label, remaining, urgent) =>
+      this.#buildLagging(label, remaining, urgent),
+    );
     this.soCloseBanner = new CachedSprite((a, b, c, d, e, f, g, h) =>
       this.#buildSoClose(a, b, c, d, e, f, g, h),
     );
@@ -187,6 +192,8 @@ export class Stage {
       lagScale: 1,
       ctaChipAlpha: 0,
       uniteSince: -1,
+      titleSince: -1,
+      timeoutTone: 0,
     };
     /** Previous frame's parameters; an identical key means the canvas is already correct. */
     this.frameKey = new Float64Array(FRAME_KEY_SIZE).fill(Number.NaN);
@@ -197,6 +204,19 @@ export class Stage {
     this.barProgress = 0;
     this.setReducedMotion(reducedMotion);
     this.#setPalette(DEFAULT_PALETTE);
+  }
+
+  /** A single font-ready rebuild covers the first fallback frame in OBS CEF. */
+  refreshTypography() {
+    const palette = this.palette;
+    this.palette = null;
+    this.#setPalette(palette);
+    this.caption = buildCaption('[crowd roars]');
+    if (this.round) {
+      this.minimap.configure(palette, this.round.payload.mode, this.side);
+      this.round.miniDirty = true;
+    }
+    this.frameKey.fill(Number.NaN);
   }
 
   setReducedMotion(reduced) {
@@ -286,6 +306,7 @@ export class Stage {
     this.pendingRound = undefined;
     this.round = null;
     this.confetti.clear();
+    this.grid.waveColumns = 0;
     if (!payload) return;
     const samePalette =
       this.palette.length === payload.palette.length &&
@@ -395,7 +416,7 @@ export class Stage {
     if (snapshot.startedAtMs !== null && now < snapshot.startedAtMs) return false;
     if (this.linkLost) return false;
     if (!this.hold && snapshot.phase === 'complete' && snapshot.revealAtMs !== null) {
-      const titleDelay = this.#usesUnite() ? UNITE_DELAY_MS + UNITE_FIT_MS + 300 : 0;
+      const titleDelay = this.#titleDelayMs();
       const retireAt =
         snapshot.revealAtMs +
         ZIPPER_MS +
@@ -439,7 +460,7 @@ export class Stage {
       this.stand = 'up';
     } else if (
       this.stand === 'dropping' &&
-      (this.reducedMotion || now - this.standAt >= DROP_TOTAL_MS)
+      now - this.standAt >= (this.reducedMotion ? MOTION.exit : DROP_TOTAL_MS)
     ) {
       this.stand = 'down';
       if (this.pendingRound !== undefined) this.#applyRound(this.pendingRound, now);
@@ -539,6 +560,12 @@ export class Stage {
     }
   }
 
+  #titleDelayMs() {
+    return this.#usesUnite()
+      ? UNITE_DELAY_MS + UNITE_FIT_MS + 300
+      : Math.max(0, CAPTION_MS - WAVE_MS);
+  }
+
   #titleHoldMs() {
     return this.#usesUnite() ? UNITE_TITLE_HOLD_MS : TITLE_HOLD_MS;
   }
@@ -568,9 +595,17 @@ export class Stage {
       const colors = round.miniFinals[side];
       for (let y = 0; y < ROWS; y += 1)
         for (let x = 0; x < COLS; x += 1) {
-          ctx.fillStyle = this.palette[colors[y * COLS + x]];
-          roundRectPath(ctx, (plan.region.x + x) * 20 + 1, y * 20 + 1, 18, 18, 3);
-          ctx.fill();
+          ctx.drawImage(
+            this.grid.atlas,
+            colors[y * COLS + x] * PITCH + 2,
+            2,
+            36,
+            36,
+            (plan.region.x + x) * 20 + 1,
+            y * 20 + 1,
+            18,
+            18,
+          );
         }
     }
     round.uniteLayer = layer;
@@ -580,7 +615,7 @@ export class Stage {
     const layer = this.round.uniteLayer;
     if (!layer) return;
     const t = this.reducedMotion ? 1 : clamp01(since / UNITE_FIT_MS);
-    const own = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+    const own = EASE_IN_OUT(t);
     const other = this.reducedMotion ? 1 : easeOutCubic(clamp01((since - 200) / 700));
     if (t >= 1) ctx.drawImage(layer, 0, HEIGHT / 4);
     else {
@@ -653,14 +688,19 @@ export class Stage {
     const mode = round.payload.mode;
     const own = snapshot.sides[this.side];
     const other = snapshot.sides[this.other];
-    const fadeRate = this.reducedMotion ? 1 : 1 / 260;
+    const fadeRate = 1 / MOTION.enter;
     const counting = this.#counting(snapshot, now);
 
     const beforeReveal =
       counting ||
       (snapshot.phase === 'revealing' &&
         (snapshot.revealAtMs === null || now < snapshot.revealAtMs));
-    this.hudAlpha = approach(this.hudAlpha, beforeReveal ? 1 : 0, dtMs, fadeRate);
+    this.hudAlpha = approach(
+      this.hudAlpha,
+      beforeReveal ? 1 : 0,
+      dtMs,
+      beforeReveal ? fadeRate : 1 / MOTION.exit,
+    );
     if (this.hudAlpha > 0) {
       let seconds = -1;
       if (counting && snapshot.deadlineAtMs !== null) {
@@ -669,12 +709,15 @@ export class Stage {
       }
       this.hudSeconds = seconds;
       this.hud.sync(
-        this.labels[this.side],
-        own.participants,
-        own.quorum,
+        this.labels,
+        mode,
+        this.side,
+        snapshot.sides.A,
+        snapshot.sides.B,
         seconds,
-        own.ready,
-        this.#team(this.side),
+        now,
+        this.reducedMotion,
+        snapshot.phase === 'revealing' || snapshot.phase === 'complete',
       );
       const target = own.progress;
       this.barProgress = this.reducedMotion
@@ -685,7 +728,12 @@ export class Stage {
     const crossover = mode === 'crossover';
     const waiting = crossover && counting && own.ready && !other.ready;
     if (waiting && this.waitAlpha === 0) this.waitSince = now;
-    this.waitAlpha = approach(this.waitAlpha, waiting ? 1 : 0, dtMs, fadeRate);
+    this.waitAlpha = approach(
+      this.waitAlpha,
+      waiting ? 1 : 0,
+      dtMs,
+      waiting ? fadeRate : 1 / MOTION.exit,
+    );
     if (this.waitAlpha > 0)
       this.waitingBanner.sync(
         this.labels[this.other],
@@ -694,9 +742,18 @@ export class Stage {
       );
 
     const theirTurn = crossover && counting && other.ready && !own.ready;
-    this.chipAlpha = approach(this.chipAlpha, theirTurn ? 1 : 0, dtMs, fadeRate);
+    this.chipAlpha = approach(
+      this.chipAlpha,
+      theirTurn ? 1 : 0,
+      dtMs,
+      theirTurn ? fadeRate : 1 / MOTION.exit,
+    );
     if (this.chipAlpha > 0)
-      this.lagBanner.sync(this.labels[this.other], Math.max(0, own.quorum - own.participants));
+      this.lagBanner.sync(
+        this.labels[this.other],
+        Math.max(0, own.quorum - own.participants),
+        this.hudSeconds <= 10,
+      );
     if (counting) {
       this.introBanner.sync(mode, this.labels.A, this.labels.B);
       this.hud.otherReady.sync();
@@ -706,7 +763,7 @@ export class Stage {
       const full =
         isRevealPhase(snapshot.phase) &&
         snapshot.revealAtMs !== null &&
-        now >= snapshot.revealAtMs + ZIPPER_MS;
+        now >= snapshot.revealAtMs + ZIPPER_MS + WAVE_MS;
       this.minimap.syncLabels(
         other.participants,
         other.quorum,
@@ -748,22 +805,24 @@ export class Stage {
       p[ROLE.highlight],
       `STUNT! \u00b7 ${mode === 'single' ? a : `${a} + ${b}`}`,
       p[ROLE.highlight],
-      ['TYPE ANYTHING ', p[ROLE.paper], 'IN CHAT', p[ROLE.highlight]],
-      "EVERY NEW PERSON SHARPENS THE PICTURE \u00b7 SPAM DOESN'T COUNT",
+      ['TYPE ANYTHING IN ', '#F4F5F7', 'CHAT', p[ROLE.highlight]],
+      "Every new person sharpens the picture \u00b7 spam doesn't count",
       p[ROLE.paper],
+      this.compositionScale,
     );
   }
 
-  #buildLagging(label, remaining) {
+  #buildLagging(label, remaining, urgent) {
     const p = this.palette;
     return buildBanner(
       p,
-      p[ROLE.alert],
+      this.#team(this.other),
       `${label} IS READY \u2713`,
       p[ROLE.highlight],
-      ["THEY'RE WAITING ON ", p[ROLE.paper], 'YOU', p[ROLE.highlight]],
-      `TYPE ANYTHING \u00b7 ${remaining} MORE ${remaining === 1 ? 'PERSON' : 'PEOPLE'}`,
+      ["THEY'RE WAITING ON ", '#F4F5F7', 'YOU', urgent ? '#F4F5F7' : p[ROLE.highlight]],
+      `Type anything \u00b7 ${remaining} more ${remaining === 1 ? 'person' : 'people'}`,
       p[ROLE.paper],
+      this.compositionScale,
     );
   }
 
@@ -774,9 +833,10 @@ export class Stage {
       color,
       'YOUR SIDE IS READY  ✓',
       shade(palette[ROLE.ready], 0.3),
-      ['WAITING FOR ', palette[ROLE.paper], label, shade(color, 0.1)],
-      `ONE PICTURE \u00b7 BOTH CHATS NEEDED \u00b7 ${remaining} MORE`,
+      ['WAITING FOR ', '#F4F5F7', label, color],
+      `One picture \u00b7 both chats needed \u00b7 ${remaining} more`,
       withAlpha(palette[ROLE.paper], 0.7),
+      this.compositionScale,
     );
   }
 
@@ -813,42 +873,32 @@ export class Stage {
       parts,
       sub,
       palette[ROLE.paper],
+      this.compositionScale,
     );
   }
 
   #buildTitle(mode, total, crossovers, labelA, labelB) {
-    const palette = this.palette;
-    const people = `${total} ${total === 1 ? 'PERSON' : 'PEOPLE'}`;
-    if (mode === 'single') {
-      return buildBanner(
-        palette,
-        palette[ROLE.highlight],
-        labelA,
-        palette[ROLE.highlight],
-        [people, palette[ROLE.highlight], ' MADE THIS', palette[ROLE.paper]],
-        'CARD STUNT COMPLETE',
-        withAlpha(palette[ROLE.paper], 0.75),
-      );
-    }
-    return buildBanner(
-      palette,
-      palette[ROLE.highlight],
-      this.occlusion && this.unite ? '' : `${labelA}  +  ${labelB}`,
-      palette[ROLE.highlight],
-      [people, palette[ROLE.highlight], ' · 2 STREAMS', palette[ROLE.paper]],
-      crossovers > 0
-        ? `${crossovers} CROSSED OVER TO HELP THE OTHER SIDE`
-        : 'NEITHER CHAT COULD DO IT ALONE',
-      withAlpha(palette[ROLE.paper], 0.75),
-      this.unite ? 76 : 92,
+    return buildFinale(
+      this.palette,
+      mode,
+      total,
+      crossovers,
+      labelA,
+      labelB,
+      Boolean(this.occlusion && this.unite),
+      this.compositionScale,
     );
   }
 
   /** Stand visibility 0..1 (rise/drop progress) used to fade chrome with the cards. */
   #standVisibility(now) {
-    if (this.stand === 'up') return 1;
+    if (this.stand === 'up')
+      return this.reducedMotion ? EASE_OUT((now - this.standAt) / MOTION.enter) : 1;
     if (this.stand === 'rising') return clamp01((now - this.standAt) / RISE_TOTAL_MS);
-    if (this.stand === 'dropping') return 1 - clamp01((now - this.standAt) / DROP_TOTAL_MS);
+    if (this.stand === 'dropping')
+      return this.reducedMotion
+        ? 1 - EASE_OUT((now - this.standAt) / MOTION.exit)
+        : 1 - clamp01((now - this.standAt) / DROP_TOTAL_MS);
     return 0;
   }
 
@@ -856,6 +906,16 @@ export class Stage {
     const layer = this.grid.layer;
     if (this.stand === 'up' || this.reducedMotion) {
       ctx.drawImage(layer, 0, 0);
+      const snapshot = this.#roundSnapshot();
+      if (snapshot && isRevealPhase(snapshot.phase) && snapshot.revealAtMs !== null)
+        this.grid.drawWave(
+          ctx,
+          now,
+          snapshot.revealAtMs,
+          this.round.regionX,
+          this.round.payload.cols,
+          this.reducedMotion,
+        );
       return;
     }
     const elapsed = now - this.standAt;
@@ -887,25 +947,30 @@ export class Stage {
     out.introAlpha = 0;
     out.introScale = 1;
     out.ctaChipAlpha = 0;
-    out.lagScale = this.reducedMotion ? 1 : 1.015 + 0.015 * Math.sin((now / 1300) * Math.PI * 2);
+    out.lagScale = 1;
+    out.titleSince = -1;
     if (!snapshot) return;
     const sinceStart = snapshot.startedAtMs === null ? -1 : now - snapshot.startedAtMs;
     const counting = this.#counting(snapshot, now);
     const needsPeople = !snapshot.sides[this.side].ready;
     if (counting && needsPeople && sinceStart >= 0) {
       if (sinceStart < CTA_MS && this.chipAlpha < 0.01) {
-        out.introAlpha = visibility;
+        out.introAlpha =
+          EASE_OUT(sinceStart / MOTION.enter) *
+          (1 - EASE_OUT((sinceStart - CTA_MS + MOTION.exit) / MOTION.exit)) *
+          visibility;
         out.introScale = this.#bannerScale(sinceStart);
       } else if (sinceStart >= CTA_MS) out.ctaChipAlpha = visibility;
     }
     if (snapshot.phase === 'timed-out' && this.round) {
       const since = now - (this.round.timedOutSeenAt ?? now);
-      out.soCloseAlpha = clamp01(since / 250) * visibility;
+      out.soCloseAlpha = EASE_OUT((since - 600) / MOTION.enter) * visibility;
       out.soCloseScale = this.#bannerScale(since);
     }
     if (isRevealPhase(snapshot.phase) && snapshot.revealAtMs !== null) {
-      const titleDelay = this.#usesUnite() ? UNITE_DELAY_MS + UNITE_FIT_MS + 300 : 0;
+      const titleDelay = this.#titleDelayMs();
       const since = now - (snapshot.revealAtMs + ZIPPER_MS + WAVE_MS + titleDelay);
+      out.titleSince = since;
       const end = this.#titleHoldMs() + TITLE_FADE_MS;
       if (since >= 0 && since < end) {
         out.titleAlpha =
@@ -933,14 +998,10 @@ export class Stage {
     const round = this.round;
     plan.fade = snapshot && round ? this.#timedOutFade(snapshot, now) : 1;
     plan.visibility = this.#standVisibility(now) * plan.fade;
+    plan.timeoutTone =
+      snapshot?.phase === 'timed-out' ? EASE_OUT((now - (snapshot.deadlineAtMs ?? now)) / 600) : 0;
     plan.uniteSince = this.#uniteSince(snapshot, now);
     plan.pulse = 0;
-    if (this.waitAlpha > 0) {
-      const wave = this.reducedMotion
-        ? 0.5
-        : 0.5 + 0.5 * Math.sin(((now - this.waitSince) / 1300) * Math.PI * 2);
-      plan.pulse = this.waitAlpha * (0.05 + 0.13 * wave) * plan.fade;
-    }
     plan.zipper = -1;
     if (
       round &&
@@ -990,6 +1051,14 @@ export class Stage {
     changed = this.#key(24, quantize(plan.ctaChipAlpha)) || changed;
     changed = this.#key(25, this.chipAlpha > 0 ? quantize(plan.lagScale) : 0) || changed;
     changed = this.#key(26, Math.min(1300, plan.uniteSince)) || changed;
+    changed =
+      this.#key(
+        27,
+        plan.titleSince >= 0 && plan.titleSince < 1200 && !this.reducedMotion ? now : -1,
+      ) || changed;
+    changed = this.#key(28, this.hudAlpha > 0 && this.hud.animating(now) ? now : -1) || changed;
+    changed = this.#key(29, quantize(plan.timeoutTone)) || changed;
+    changed = this.#key(30, this.grid.waveColumns > 0 ? now : -1) || changed;
     return changed;
   }
 
@@ -1010,14 +1079,18 @@ export class Stage {
     const plan = this.plan;
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.globalAlpha = plan.fade;
+    ctx.save();
+    ctx.globalAlpha = plan.fade * (this.reducedMotion ? this.#standVisibility(now) : 1);
+    if (plan.timeoutTone > 0 && 'filter' in ctx)
+      ctx.filter = `saturate(${1 - 0.7 * plan.timeoutTone}) brightness(${1 - 0.2 * plan.timeoutTone})`;
     if (plan.uniteSince >= 0) {
       ctx.save();
-      if (this.stand === 'dropping')
+      if (this.stand === 'dropping' && !this.reducedMotion)
         ctx.translate(0, HEIGHT * easeInCubic(clamp01((now - this.standAt) / DROP_TOTAL_MS)));
       this.#drawUnite(ctx, plan.uniteSince);
       ctx.restore();
     } else this.#drawStand(ctx, now);
+    ctx.restore();
     if (plan.pulse > 0) {
       // Brightness pulse on our own cards only (source-atop keeps the gaps transparent).
       ctx.globalCompositeOperation = 'source-atop';
@@ -1030,14 +1103,11 @@ export class Stage {
     if (plan.zipper >= 0) this.zipper.draw(ctx, plan.zipper, this.side === 'A' ? 'right' : 'left');
 
     if (plan.uniteSince < 0) {
-      this.minimap.draw(ctx, plan.visibility);
-      this.hud.draw(
-        ctx,
-        this.hudAlpha * plan.visibility,
-        this.barProgress,
-        plan.barReady ? this.palette[ROLE.ready] : this.#team(this.side),
-      );
-      this.hud.drawChip(ctx, plan.ctaChipAlpha);
+      if (!this.hud.compact) this.minimap.draw(ctx, plan.visibility);
+      if (!this.hud.compact) {
+        this.hud.draw(ctx, this.hudAlpha * plan.visibility);
+        this.hud.drawChip(ctx, plan.ctaChipAlpha);
+      }
     }
     // Confetti flies behind banners and captions so the text always stays legible.
     ctx.save();
@@ -1055,9 +1125,10 @@ export class Stage {
         ctx,
         this.introBanner.canvas,
         cx,
-        this.#bannerY(this.introBanner.canvas, HEIGHT / 2),
+        this.#bannerY(this.introBanner.canvas, BANNER_Y),
         plan.introAlpha,
         plan.introScale,
+        this.reducedMotion,
       );
       drawCentered(
         ctx,
@@ -1066,6 +1137,7 @@ export class Stage {
         this.#bannerY(this.lagBanner.canvas, BANNER_Y),
         this.chipAlpha * plan.visibility,
         plan.lagScale,
+        this.reducedMotion,
       );
       drawCentered(
         ctx,
@@ -1074,6 +1146,7 @@ export class Stage {
         this.#bannerY(this.waitingBanner.canvas, BANNER_Y),
         plan.waitAlpha,
         plan.waitScale,
+        this.reducedMotion,
       );
       drawCentered(
         ctx,
@@ -1082,37 +1155,46 @@ export class Stage {
         this.#bannerY(this.soCloseBanner.canvas, BANNER_Y),
         plan.soCloseAlpha,
         plan.soCloseScale,
+        this.reducedMotion,
       );
     }
     drawCentered(
       ctx,
       this.titleBanner.canvas,
       cx,
-      this.#bannerY(
-        this.titleBanner.canvas,
-        plan.uniteSince >= 0 ? 920 : BANNER_Y,
-        plan.uniteSince >= 0,
-      ),
+      this.#titleY(plan.uniteSince >= 0),
       plan.titleAlpha,
       plan.titleScale,
+      this.reducedMotion,
     );
-    drawCentered(ctx, this.caption, cx, CAPTION_Y, plan.caption, 1);
-    if (plan.simulated) {
+    drawFinaleNumbers(
+      ctx,
+      this.titleBanner.canvas,
+      cx,
+      this.#titleY(plan.uniteSince >= 0),
+      plan.titleSince,
+      plan.titleAlpha,
+      plan.titleScale,
+      this.reducedMotion,
+    );
+    if (this.compositionScale >= 1)
+      drawCentered(ctx, this.caption, cx, CAPTION_Y, plan.caption, 1, this.reducedMotion);
+    if (plan.simulated && this.compositionScale >= 1) {
       ctx.globalAlpha = plan.visibility;
       const snapshot = this.#roundSnapshot();
-      let badgeX = 18;
-      let badgeY = 18;
+      let badgeX = 0;
+      let badgeY = 0;
       if (plan.uniteSince >= 0) {
         // Full-bleed text uses the band edge: keep the simulation label above the artwork.
-        badgeY = HEIGHT / 4 - this.badge.height - 12;
+        badgeY = HEIGHT / 4 - this.badge.height - 24;
       } else if (
         snapshot &&
         isRevealPhase(snapshot.phase) &&
         snapshot.revealAtMs !== null &&
         now >= snapshot.revealAtMs + ZIPPER_MS + WAVE_MS
       ) {
-        badgeY = HEIGHT - this.badge.height - 18;
-        if (this.occlusion && this.occlusion.x < WIDTH / 2) badgeX = WIDTH - this.badge.width - 18;
+        badgeY = HEIGHT - this.badge.height;
+        if (this.occlusion && this.occlusion.x < WIDTH / 2) badgeX = WIDTH - this.badge.width;
       }
       ctx.drawImage(this.badge, badgeX, badgeY);
       ctx.globalAlpha = 1;
@@ -1120,12 +1202,38 @@ export class Stage {
     if (this.debugText) this.#drawDebug(ctx);
   }
 
+  #titleY(united) {
+    return this.#bannerY(
+      this.titleBanner.canvas,
+      this.compositionScale < 1 ? 916 : BANNER_Y,
+      united,
+    );
+  }
+
+  /** Readable identification/captions and compact matchup chrome outside the scaled stand. */
+  drawExternalChrome(ctx, now) {
+    const plan = this.plan;
+    if (this.compositionScale >= 1 || this.stand === 'down' || plan.visibility <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = plan.visibility;
+    if (plan.simulated) ctx.drawImage(this.badge, 0, 0);
+    ctx.restore();
+    drawCentered(ctx, this.caption, WIDTH / 2, CAPTION_Y, plan.caption, 1, this.reducedMotion);
+    if (this.hud.compact && plan.uniteSince < 0) {
+      const s = this.compositionScale,
+        cx = this.side === 'A' ? WIDTH - (WIDTH * s) / 2 : (WIDTH * s) / 2,
+        top = (HEIGHT * (1 - s)) / 2 + 24;
+      this.hud.draw(ctx, this.hudAlpha * plan.visibility, cx, top);
+      this.hud.drawChip(ctx, plan.ctaChipAlpha, cx, top + 110);
+    }
+  }
+
   #bannerY(sprite, preferred, united = false) {
     const hole = this.occlusion;
     if (!hole || !sprite) return preferred;
-    // Include the banner's 3% pulse and glow in the exclusion bounds.
-    const halfW = sprite.width * 0.52,
-      halfH = sprite.height * 0.52;
+    // Transparent shadow bleed does not exclude picture/camera space; the glass body does.
+    const halfW = (sprite.width - 128) / 2,
+      halfH = (sprite.height - 128) / 2;
     if (WIDTH / 2 + halfW <= hole.x || WIDTH / 2 - halfW >= hole.x + hole.w) return preferred;
     if (this.#bannerClear(preferred, halfH, hole)) return preferred;
     const candidates = united ? UNITE_TITLE_ALTERNATES : BANNER_ALTERNATES;
@@ -1136,15 +1244,15 @@ export class Stage {
 
   #bannerClear(y, halfH, hole) {
     return (
-      y - halfH >= 8 &&
-      y + halfH <= HEIGHT - 8 &&
+      y - halfH >= 64 &&
+      y + halfH <= HEIGHT - 64 &&
       (y + halfH <= hole.y || y - halfH >= hole.y + hole.h)
     );
   }
 
   #bannerScale(sinceMs) {
     if (this.reducedMotion) return 1;
-    return 0.86 + 0.14 * easeOutBack(clamp01(sinceMs / 450));
+    return 0.96 + 0.04 * EASE_OUT(sinceMs / MOTION.enter);
   }
 
   #drawDebug(ctx) {
@@ -1164,21 +1272,26 @@ export class Stage {
       hudAlpha: this.hudAlpha,
       hudSeconds: this.hudSeconds,
       soCloseAlpha: this.plan.soCloseAlpha,
+      titleAlpha: this.plan.titleAlpha,
+      captionAlpha: this.plan.caption,
       introAlpha: this.plan.introAlpha,
       introScale: this.plan.introScale,
       ctaChipAlpha: this.plan.ctaChipAlpha,
       lagAlpha: this.plan.uniteSince >= 0 ? 0 : this.chipAlpha * this.plan.visibility,
       lagScale: this.plan.lagScale,
+      waitingCenterY: this.#bannerY(this.waitingBanner.canvas, BANNER_Y),
+      waitingHeight: Math.max(0, (this.waitingBanner.canvas?.height ?? 128) - 128),
       waitingRemaining: this.waitingBanner.c ?? 0,
       uniteSince: this.plan.uniteSince,
       lagCenterY: this.#bannerY(this.lagBanner.canvas, BANNER_Y),
-      lagHeight: this.lagBanner.canvas?.height ?? 0,
-      titleCenterY: this.#bannerY(
-        this.titleBanner.canvas,
-        this.plan.uniteSince >= 0 ? 920 : BANNER_Y,
-        this.plan.uniteSince >= 0,
-      ),
-      titleHeight: this.titleBanner.canvas?.height ?? 0,
+      lagHeight: Math.max(0, (this.lagBanner.canvas?.height ?? 128) - 128),
+      titleCenterY: this.#titleY(this.plan.uniteSince >= 0),
+      titleHeight: Math.max(0, (this.titleBanner.canvas?.height ?? 128) - 128),
+      waveColumns: this.grid.waveColumns ?? 0,
+      timeoutTone: this.plan.timeoutTone,
+      finaleValues: this.titleBanner.canvas?.finale?.values ?? [],
+      spriteBuilds: spriteBuildCount(),
+      compactScoreBug: this.hud.compact,
       cards: Array.from(this.grid.to),
       confetti: this.confetti.count,
     };

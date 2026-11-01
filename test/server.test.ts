@@ -36,6 +36,28 @@ async function start(options: Partial<AppOptions> = {}) {
   return { app, port };
 }
 
+it('serves the self-hosted broadcast fonts with an explicit same-origin font CSP', async () => {
+  const { port } = await start();
+  for (const face of ['Archivo', 'GeistMono']) {
+    const response = await raw(port, `/fonts/${face}-Variable.woff2`);
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe('font/woff2');
+    expect(response.headers['content-security-policy']).toContain("font-src 'self'");
+    expect(response.body.length).toBeGreaterThan(10_000);
+    const overlayPath = `/overlay/fonts/${face}-Variable.woff2`;
+    expect((await raw(port, overlayPath, { headers: PROXY })).status).toBe(403);
+    expect(
+      (await raw(port, overlayPath, { headers: { ...PROXY, Cookie: 'crossover_room=wrong' } }))
+        .status,
+    ).toBe(403);
+    const partner = await raw(port, overlayPath, {
+      headers: { ...PROXY, Cookie: `crossover_room=${ROOM}` },
+    });
+    expect(partner.status).toBe(200);
+    expect(partner.body).toBe(response.body);
+  }
+});
+
 interface RawResponse {
   readonly status: number;
   readonly headers: IncomingHttpHeaders;

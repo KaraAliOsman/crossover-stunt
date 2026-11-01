@@ -5,6 +5,7 @@ import { createAudio } from './audio.js';
 import { OverlayLink, ServerClock } from './net.js';
 import { PROTOCOL_VERSION } from './protocol.js';
 import { Stage } from './stage.js';
+import { loadBroadcastFonts } from './typography.js';
 import { readLayout } from './layout.js';
 import { roundRectPath } from './draw.js';
 
@@ -66,6 +67,7 @@ const audio = createAudio({ mute: params.mute, chip: document.getElementById('so
 const clock = new ServerClock();
 const stage = new Stage({
   side: params.side,
+  compositionScale: params.fit === 'seam' ? params.scale : 1,
   reducedMotion: resolveReducedMotion(),
   audio,
   unite: params.unite,
@@ -86,6 +88,11 @@ const stage = new Stage({
         },
   countdownLeadMs: params.latencyMs,
 });
+loadBroadcastFonts()
+  .then(() => stage.refreshTypography())
+  .catch(() => {
+    /* System fallbacks remain usable offline. */
+  });
 motionQuery.addEventListener('change', () => {
   stage.setReducedMotion(resolveReducedMotion());
 });
@@ -218,12 +225,13 @@ function frame() {
     ctx.clearRect(x, y, w, h);
     ctx.save();
     ctx.globalAlpha = stage.plan.visibility;
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = params.side === 'A' ? '#e69f00' : '#56b4e9';
-    roundRectPath(ctx, x + 3, y + 3, Math.max(0, w - 6), Math.max(0, h - 6), 12);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(244,245,247,0.24)';
+    roundRectPath(ctx, x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1), 12);
     ctx.stroke();
     ctx.restore();
   }
+  if (params.fit === 'seam') stage.drawExternalChrome(ctx, now);
   if (params.debug) {
     const cost = performance.now() - local;
     costSum += cost;

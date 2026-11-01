@@ -25,6 +25,7 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html',
   '.js': 'text/javascript',
   '.css': 'text/css',
+  '.woff2': 'font/woff2',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
 };
@@ -415,12 +416,14 @@ test('demo: CALL sends a valid CallRequest, live round renders, RESET needs conf
   await shot(page, 'demo-idle');
 
   await page.getByRole('radio', { name: '30 s' }).check();
+  await expect(page.locator('.advanced')).not.toHaveAttribute('open', '');
+  await page.locator('.advanced summary').click();
   await page.getByLabel('Minimum people').fill('4');
   await page.getByLabel('Share of recent chatters').fill('50');
   await page.locator('#override-A-on').check();
   await page.getByLabel('Fixed quorum for side A').fill('12');
   await page.getByRole('radio', { name: 'LEFT STAND + RIGHT STAND' }).check();
-  await expect(page.locator('#call-sub')).toHaveText('30 s · both sides');
+  await expect(page.locator('#call-sub')).toHaveText('30 s');
   await page.locator('#call-btn').click();
 
   await expect.poll(() => mock.postsTo('/api/call').length).toBe(1);
@@ -470,7 +473,7 @@ test('demo: CALL sends a valid CallRequest, live round renders, RESET needs conf
 
   // A live stunt only stops on a second, deliberate click.
   await page.locator('#reset-btn').click();
-  await expect(page.locator('#reset-btn')).toHaveText('Confirm RESET');
+  await expect(page.locator('#reset-btn')).toHaveText('Confirm reset');
   expect(mock.postsTo('/api/reset')).toHaveLength(0);
   await page.locator('#reset-btn').click();
   await expect.poll(() => mock.postsTo('/api/reset').length).toBe(1);
@@ -514,13 +517,16 @@ test('errors stay inline: rejected CALL, invalid field, unreachable server', asy
   );
   expect(mock.postsTo('/api/call')).toHaveLength(2);
 
+  await page.locator('.advanced summary').click();
   await page.getByLabel('Minimum people').fill('0');
+  await page.locator('.advanced summary').click();
   await page.locator('#call-btn').click();
   await expect(page.locator('#stunt-error')).toHaveText(
     'Minimum people must be a whole number from 1 to 1000.',
   );
   await expect(page.getByLabel('Minimum people')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByLabel('Minimum people')).toBeFocused();
+  await expect(page.locator('.advanced')).toHaveAttribute('open', '');
   expect(mock.postsTo('/api/call')).toHaveLength(2);
 
   mock.overrides.set('/dev/chat', { status: 404, body: { error: 'Not found' } });
@@ -621,7 +627,7 @@ test('live mode: device code, channels, partner share link and copy', async ({ p
   await expect(page.locator('#demo-banner')).toBeHidden();
   await expect(page.locator('#simulator')).toBeHidden();
   await expect(page.locator('#twitch-chip')).toHaveText('Signed out');
-  await expect(page.locator('#call-sub')).toHaveText('45 s · both chats');
+  await expect(page.locator('#call-sub')).toHaveText('45 s');
   // Bare side letters are not repeated as labels.
   await expect(page.locator('#cap-a')).toHaveText('A · left half');
   await expect(page.locator('#label-B')).toHaveText('Side B');
@@ -733,7 +739,7 @@ test('single mode on a narrow window sends a 48×27 artwork without a B override
   await page.getByRole('radio', { name: /Single/ }).check();
   await expect(page.locator('#grid-size')).toHaveText('48 × 27 cards · single');
   await expect(page.locator('#override-B-on')).toBeDisabled();
-  await expect(page.locator('#call-sub')).toHaveText('45 s · side A');
+  await expect(page.locator('#call-sub')).toHaveText('45 s');
   await page.getByRole('radio', { name: 'NEXT: BOSS FIGHT' }).check();
   await page.locator('#call-btn').click();
   await expect.poll(() => mock.postsTo('/api/call').length).toBe(1);
@@ -846,6 +852,32 @@ test('layout radios rewrite both local URLs and the private partner Copy URL', a
   await shot(page, 'on-stream-layout');
   await page.getByRole('radio', { name: 'Full', exact: true }).check();
   expect(await page.locator('#url-A').inputValue()).toBe(mock.state.overlayUrls.A);
+  expect(problems).toEqual([]);
+});
+
+test('matchup counts align beneath team names with a quiet baseline suffix', async ({ page }) => {
+  const mock = new MockServer(true);
+  const problems = await open(page, mock);
+  for (const width of [1920, 1280]) {
+    await page.setViewportSize({ width, height: width === 1920 ? 1080 : 720 });
+    for (const team of ['A', 'B']) {
+      const label = await page.locator(`#label-${team}`).boundingBox();
+      const count = await page.locator(`#count-${team}`).boundingBox();
+      const suffix = page.locator(`#meter-${team} .side-count-unit`);
+      const unit = await suffix.boundingBox();
+      expect(label).not.toBeNull();
+      expect(count).not.toBeNull();
+      expect(unit).not.toBeNull();
+      expect(Math.abs(label!.x - count!.x)).toBeLessThanOrEqual(1);
+      expect(count!.y - (label!.y + label!.height)).toBeLessThan(24);
+      expect(unit!.y).toBeGreaterThan(count!.y);
+      expect(
+        await page.evaluate(
+          `Number(getComputedStyle(document.querySelector('#meter-${team} .side-count-unit')).fontWeight)`,
+        ),
+      ).toBeLessThan(550);
+    }
+  }
   expect(problems).toEqual([]);
 });
 

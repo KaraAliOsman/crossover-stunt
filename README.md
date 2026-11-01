@@ -2,7 +2,7 @@
 
 **Two streams. One picture.** Two Twitch communities each refine one half of a hidden picture, live on stream. Every distinct person who types anything in their channel flips the stadium cards on their half one step closer to the image. Neither chat can finish alone: the final detail only appears in a joint reveal once **both** sides reach their quorum. Single-channel **Card Stunt** is the daily-use fallback. Built with **OpenAI Codex** for the Codex x TwitchCon Hackathon.
 
-**Status.** The whole stunt runs end to end in the credential-free SIMULATED demo: pure engine, server, both overlays, control panel and the Playwright seam test. The live Twitch path (Device Code sign-in, one EventSub socket for both channels, chat prompts and summaries) and the cloudflared partner tunnel are implemented and tested against fakes, but **have not been verified with real Twitch accounts, a real tunnel or real OBS yet**. See [what is verified](#tests-and-evidence).
+**Status.** The whole stunt runs end to end in the credential-free SIMULATED demo: pure engine, server, both overlays, control panel and the Playwright seam test. The v3 redesign was also streamed on both real Twitch channels in OBS 33 (operator report and recording crops). That stream exposed three HUD defects, now corrected locally; these corrections await the next live check. Large real crowds and a real partner tunnel remain unverified. See [what is verified](#tests-and-evidence).
 
 ## Quickstart for judges (no Twitch, no OBS)
 
@@ -55,6 +55,8 @@ Clicking CALL, RESET or a showcase button in the control panel stops autoplay so
 
 6. Pick a picture (crossover defaults to **A + B** using both channel names; **HEART** and **FACE** remain available), a duration (30/45/60 s) and optionally fixed quorums, then **CALL**. CALL is enabled once the Twitch card shows **Connected**; without EventSub nobody would be counted. The app posts the prompt to the required chats, the summary on the reveal (`23 people across 2 streams made this · 4 crossed over`) and `SO CLOSE …` on timeout. The control panel shows whether Twitch accepted or dropped each message; a prompt repeated within 30 s gets a `(take 2)` suffix because Twitch drops identical messages. Messages from your own account never count. Chat counts until the server deadline, but viewers see the stream a few seconds late: add `latencyMs=3000` (about your stream latency) to the overlay URLs so the on-stream countdown reaches 0:00 before the deadline instead of after it.
 
+The broadcast package uses matte paper cards, a shared-clock stadium wave and quiet glass lower thirds. Both teams appear in the score bug; the finale counts PEOPLE, STREAMS and CROSSED OVER. The control panel puts the matchup and chosen picture first, with quorum settings under **Advanced**.
+
 During a CALL, **TYPE ANYTHING IN CHAT** becomes a persistent reminder until your side is ready.
 The lagging side sees **THEY'RE WAITING ON YOU** with the exact number still needed. The ready
 chat gets one invitation to help the other side. Known bots (including Nightbot, StreamElements,
@@ -90,7 +92,7 @@ local B and partner B URLs while preserving the private room token:
 | Choice               | URL options               | Composition                                                |
 | -------------------- | ------------------------- | ---------------------------------------------------------- |
 | Full                 | No layout parameters      | Original full-size overlay                                 |
-| Facecam bottom right | `cutout=1440,700,440,340` | Transparent camera hole with a side-colour border          |
+| Facecam bottom right | `cutout=1440,700,440,340` | Transparent camera hole with a neutral hairline border     |
 | Facecam bottom left  | `cutout=40,700,440,340`   | The same hole in the other corner                          |
 | Seam fit             | `fit=seam&scale=0.62`     | Smaller halves meet at the stream edges; UNITE is disabled |
 
@@ -126,7 +128,7 @@ pnpm only allows esbuild's install script (`pnpm-workspace.yaml`). No global ins
   - `control` runs the control panel and dev page against an in-memory API mock, including team labels and layout URL copying.
   - Captures go to `test-results/e2e/`, `test-results/overlay/` and `test-results/control/` (ignored).
 - **Verified live (2026-10-31 and 2026-11-01, Windows 11, OBS 33):** a Public app with the Device Code flow and a real broadcaster account; stored tokens reused after a server restart; **two real channels on one EventSub WebSocket** (efaoangssm + efaoangsam); Helix bot messages in both chats; OBS browser sources rendering overlays A and B on two simultaneous Twitch streams (720p30, 0 dropped stream frames), watched in the twitch.tv players; crossover, single-channel and timed-out (SO CLOSE) rounds; the roar captured in the OBS recordings. Evidence: the demo video (twitch.tv players and both chats on screen). The live tests used our two channels and one viewer account (one person per side).
-- **Not verified yet:** real crowds of many distinct people, refresh-token rotation, EventSub reconnect/revocation, Shared Chat, dropped messages, a real cloudflared tunnel and the partner's room cookie inside OBS, and OBS frame rate under heavy load. Headless Chromium reaches ~60 fps in the frame-pacing check, which is a regression signal, not proof of OBS performance.
+- **Not verified yet:** real crowds of many distinct people, refresh-token rotation, EventSub reconnect/revocation, Shared Chat, dropped messages, a real cloudflared tunnel and the partner's room cookie inside OBS, and OBS frame rate under heavy load. Per-phase Chromium frame-pacing measurements for this redesign are recorded in CODEX_LOG; they are regression signals, not proof of OBS performance or a sustained 60 fps claim.
 
 [docs/CODEX_LOG.md](docs/CODEX_LOG.md) records the Codex sessions logged so far and the evidence actually gathered in them. Its first entry is the repository scaffold session: its "Deliberately unfinished" list describes the state at the end of that session, not the current one (current status and verification are in this section and in [docs/SPEC.md](docs/SPEC.md)).
 
@@ -150,7 +152,7 @@ Read [AGENTS.md](AGENTS.md), [docs/SPEC.md](docs/SPEC.md) and [docs/DESIGN.md](d
 
 ## Innovation
 
-Most chat games run inside one community. Here two communities share one picture that neither can see whole: each overlay shows its own half large plus a minimap of the partner's progress (`THEIR SIDE 7/12`), a finished side visibly waits for the other, and success is one synchronized moment on both streams. Real crossover footage is still to be recorded.
+Most chat games run inside one community. Here two communities share one picture that neither can see whole: each overlay shows its own half large plus a minimap of the partner's progress (`THEIR SIDE 7/12`), a finished side visibly waits for the other, and success is one synchronized moment on both streams. The v3 package has since been streamed on both channels in OBS 33; its latest HUD corrections await another live check.
 
 ## Impact
 
@@ -166,4 +168,4 @@ Stadium flip cards with a top sheen, a staggered ripple per refinement, a zipper
 
 ## License
 
-[MIT](LICENSE), © 2026 Crossover Stunt authors. No external artwork, fonts or music are bundled; the roar is synthesized at runtime.
+[MIT](LICENSE), © 2026 Crossover Stunt authors. No external artwork or music is bundled; the roar is synthesized at runtime. The self-hosted broadcast fonts are Archivo (The Archivo Project Authors / Omnibus-Type, 2020) and Geist Mono (The Geist Project Authors, 2024), both under the SIL Open Font License 1.1. Licenses ship beside the fonts: [Archivo OFL](public/fonts/Archivo-OFL.txt) and [Geist Mono OFL](public/fonts/GeistMono-OFL.txt). No font requests leave this server.

@@ -387,6 +387,8 @@ async function runAction(name, buttons, errorElement, task) {
   } catch (error) {
     if (error instanceof FieldError) {
       error.input.setAttribute('aria-invalid', 'true');
+      const disclosure = error.input.closest('details');
+      if (disclosure) disclosure.open = true;
       error.input.focus();
     }
     setMessage(errorElement, errorText(error));
@@ -542,7 +544,7 @@ function renderScoreboard(state) {
     parts.meter.dataset.unused = String(unused);
     parts.meter.dataset.ready = String(!unused && data.ready);
     setText(parts.label, distinctLabel(side, meta.labels[side]) ?? `Side ${side}`);
-    setText(parts.count, unused ? '–' : String(data.participants));
+    rollControlNumber(parts.count, unused ? '–' : String(data.participants));
     setText(parts.quorum, unused || idle ? '–' : String(data.quorum));
     const progress = unused || idle ? 0 : Math.min(1, Math.max(0, data.progress));
     parts.fill.style.transform = `scaleX(${progress})`;
@@ -589,6 +591,28 @@ function roundSummary({ snapshot, meta }) {
   }
 }
 
+// Digits keep fixed slots; old glyphs live in CSS generated content, never duplicate accessible text.
+function rollControlNumber(node, text) {
+  if (node.textContent === text) return;
+  const previous = node.textContent;
+  node.replaceChildren(
+    ...Array.from(text, (char, i) => {
+      const span = document.createElement('span');
+      span.className = 'digit';
+      if (previous[i] && previous[i] !== char) span.dataset.previous = previous[i];
+      const current = document.createElement('span');
+      current.className = 'digit-current';
+      current.textContent = char;
+      span.append(current);
+      return span;
+    }),
+  );
+}
+
+function phaseRunning(phase) {
+  return phase === 'active' || phase === 'revealing';
+}
+
 function renderClock() {
   const snapshot = ui.state?.snapshot;
   const now = Date.now() + ui.clockOffsetMs;
@@ -615,9 +639,24 @@ function renderClock() {
     caption = "time's up";
     kind = 'over';
   }
-  setText(el.countdown, main);
+  rollControlNumber(el.countdown, main);
   setText(el.clockCaption, caption);
   el.countdown.dataset.kind = kind;
+  const running = phaseRunning(snapshot?.phase);
+  el.callBtn.dataset.running = String(running);
+  const callLabel = el.callBtn.querySelector('.btn-call-label');
+  setText(
+    callLabel,
+    running
+      ? `${ui.state?.demo ? 'Running' : 'Live'} \u00b7 ${snapshot.phase === 'active' ? main : 'Revealing'}`
+      : 'Call the stunt',
+  );
+  const remaining =
+    snapshot?.deadlineAtMs === null ? 0 : Math.max(0, (snapshot?.deadlineAtMs ?? now) - now);
+  el.callBtn.style.setProperty(
+    '--time-left',
+    running ? String(Math.min(1, remaining / selectedDurationMs())) : '0',
+  );
   const phase = snapshot?.phase ?? 'idle';
   const title =
     phase === 'active'
@@ -642,6 +681,14 @@ function renderTwitch(state) {
   el.twitchChip.dataset.tone = tone;
   el.twitchDemo.hidden = !demo;
 
+  setText(
+    document.getElementById('connection-pill'),
+    demo
+      ? 'SIMULATED \u00b7 local'
+      : twitch.status === 'connected'
+        ? `Connected as ${twitch.login ?? ''}`
+        : text,
+  );
   const signedIn = !demo && typeof twitch.login === 'string' && twitch.login.length > 0;
   el.twitchAccount.hidden = !signedIn;
   if (signedIn) setText(el.twitchLogin, twitch.login);
@@ -844,10 +891,7 @@ function updateCallButton() {
   el.callBtn.disabled = blocker !== null || ui.busy.has('call');
   setMessage(el.callBlocker, blocker ?? '');
   const seconds = selectedDurationMs() / 1000;
-  const demo = ui.state?.demo === true;
-  const where =
-    ui.mode === 'crossover' ? (demo ? 'both sides' : 'both chats') : demo ? 'side A' : 'your chat';
-  setText(el.callSub, `${seconds} s · ${where}`);
+  setText(el.callSub, phaseRunning(ui.state?.snapshot.phase) ? 'ON AIR' : `${seconds} s`);
   el.resetBtn.disabled = !ui.state || ui.busy.has('reset');
 }
 
@@ -1029,6 +1073,14 @@ function drawGrid(canvas, artwork, cardPx, gapPx) {
 }
 
 function drawPreview() {
+  const hero = document.getElementById('matchup-preview');
+  const result = drawGrid(hero, picture.artwork, 10, 1);
+  if (ui.mode === 'crossover') {
+    result.context.fillStyle = 'rgba(244,245,247,.8)';
+    result.context.fillRect(result.width / 2, 0, 1, result.height);
+  }
+  document.querySelector('.matchup-picture figcaption span').textContent =
+    ui.mode === 'crossover' ? 'A | B' : 'A';
   const { context, width, height } = drawGrid(el.preview, picture.artwork, PREVIEW_CARD_PX, 1);
   // Never upscale the preview past 10 px per card; narrower windows scale it down.
   el.preview.style.maxWidth = `${width}px`;
@@ -1053,7 +1105,16 @@ function drawPreview() {
 function drawThumbnails() {
   const labels = currentLabels();
   for (const canvas of document.querySelectorAll('canvas.preset-thumb')) {
-    drawGrid(canvas, presetArtwork(canvas.dataset.preset, ui.mode, labels), THUMB_CARD_PX, 0);
+    const r = drawGrid(
+      canvas,
+      presetArtwork(canvas.dataset.preset, ui.mode, labels),
+      THUMB_CARD_PX,
+      0,
+    );
+    if (ui.mode === 'crossover') {
+      r.context.fillStyle = 'rgba(244,245,247,.6)';
+      r.context.fillRect(r.width / 2, 0, 1, r.height);
+    }
   }
 }
 
@@ -1148,7 +1209,7 @@ function disarmReset() {
   window.clearTimeout(ui.resetTimer);
   ui.resetArmedUntil = 0;
   delete el.resetBtn.dataset.armed;
-  setText(el.resetBtn, 'RESET');
+  setText(el.resetBtn, 'Reset round');
 }
 
 function onReset() {
@@ -1158,7 +1219,7 @@ function onReset() {
   if (running && Date.now() > ui.resetArmedUntil) {
     ui.resetArmedUntil = Date.now() + RESET_CONFIRM_MS;
     el.resetBtn.dataset.armed = 'true';
-    setText(el.resetBtn, 'Confirm RESET');
+    setText(el.resetBtn, 'Confirm reset');
     setMessage(el.stuntStatus, 'A stunt is running. Click RESET again within 4 s to stop it.');
     ui.resetTimer = window.setTimeout(disarmReset, RESET_CONFIRM_MS);
     return;

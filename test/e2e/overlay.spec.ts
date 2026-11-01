@@ -589,3 +589,70 @@ test('HYPE hero reveal is readable on both real demo overlays (SIMULATED)', asyn
     await shot(overlays[side], `polish-hype-native-${side}`);
   }
 });
+
+test('broadcast design package: real SIMULATED demo capture sequence', async ({
+  context,
+  request,
+}) => {
+  test.setTimeout(150_000);
+  const directory = path.resolve(SHOTS_DIR, '../design');
+  await mkdir(directory, { recursive: true });
+  await reset(request);
+  await postJson(request, '/api/labels', { A: 'TEAM ORANGE', B: 'TEAM BLUE' });
+  const overlays = await openOverlays(context, '&hold=1');
+  for (const side of ['A', 'B'] as const) {
+    await overlays[side].evaluate(
+      "document.body.style.background = 'repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 18px,transparent 18px 46px),linear-gradient(145deg,#2c454d,#151c27)'",
+    );
+  }
+  const control = await context.newPage();
+  await control.goto('/control');
+  await expect(control.locator('#call-btn')).toBeEnabled();
+  await control.locator('input[name="preset"][value="hype"]').check();
+  await control.evaluate('window.scrollTo(0,0)');
+  await control.screenshot({ path: path.join(directory, 'control-idle.png') });
+  const capture = async (name: string) => {
+    // Follow-up art reviews can refresh just the changed score/result compositions.
+    if (process.env['V3_POLISH_CAPTURE'] && !['waiting', 'finale', 'single'].includes(name)) return;
+    await Promise.all(
+      (['A', 'B'] as const).map((side) => {
+        if (process.env['V3_POLISH_CAPTURE'] && name === 'single' && side === 'B') return;
+        return overlays[side].screenshot({ path: path.join(directory, `${name}-${side}.png`) });
+      }),
+    );
+  };
+  await showcase(request, 'crossover');
+  const active = await waitForPhase(request, 'active');
+  await sleepUntil(overlays.A, active.startedAtMs! + 1200);
+  await capture('intro');
+  await sleepUntil(overlays.A, active.startedAtMs! + 8400);
+  await capture('mid-refinement');
+  await expect(control.locator('#call-btn')).toBeDisabled();
+  await control.evaluate('window.scrollTo(0,0)');
+  await control.screenshot({ path: path.join(directory, 'control-live.png') });
+  await sleepUntil(overlays.A, active.startedAtMs! + 14400);
+  await capture('waiting');
+  const revealing = await waitForPhase(request, 'revealing');
+  const at = revealing.revealAtMs!;
+  await sleepUntil(overlays.A, at + 1300);
+  await capture('wave-before-seam');
+  await sleepUntil(overlays.A, at + 1940);
+  await capture('wave-at-seam');
+  await sleepUntil(overlays.A, at + 2540);
+  await capture('wave-after-seam');
+  await waitForPhase(request, 'complete');
+  await capture('finale');
+  await showcase(request, 'so-close');
+  await waitForPhase(request, 'timed-out');
+  await overlays.A.waitForTimeout(1200);
+  await capture('so-close');
+  await showcase(request, 'single');
+  await waitForPhase(request, 'complete');
+  await capture('single');
+  await reset(request);
+  await postJson(request, '/api/labels', { A: 'LEFT STAND', B: 'RIGHT STAND' });
+  await control.goto('/dev');
+  if (!process.env['V3_POLISH_CAPTURE'])
+    await control.screenshot({ path: path.join(directory, 'dev.png') });
+  await control.close();
+});

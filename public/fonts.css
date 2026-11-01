@@ -1,0 +1,2 @@
+/* Both tools and partner overlays share one font declaration. Remote assets stay inside the existing overlay-only access boundary. */
+@import url('/overlay/fonts.css');

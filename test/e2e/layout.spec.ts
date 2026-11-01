@@ -64,6 +64,7 @@ async function openLayout(page: Page, side: Side, query: string) {
       '.html': 'text/html',
       '.js': 'text/javascript',
       '.css': 'text/css',
+      '.woff2': 'font/woff2',
     };
     await route.fulfill({
       body: await readFile(file),
@@ -73,9 +74,10 @@ async function openLayout(page: Page, side: Side, query: string) {
   await page.routeWebSocket(/\/ws\?/, (socket) => {
     sockets.push(socket);
   });
-  await page.clock.install({ time: NOW });
-  await page.goto(`${ORIGIN}/overlay/${side.toLowerCase()}?mute=1&${query}`);
+  // Pause before navigation: a slow font/page load must not run past the target.
+  await page.clock.install({ time: NOW - 60_000 });
   await page.clock.pauseAt(NOW + 1000);
+  await page.goto(`${ORIGIN}/overlay/${side.toLowerCase()}?mute=1&${query}`);
   await expect.poll(() => sockets.length).toBe(1);
   const messages: ServerMessage[] = [
     { type: 'hello', protocol: 2, side, serverNowMs: NOW + 1000, simulated: true },
@@ -104,13 +106,14 @@ async function pixel(page: Page, x: number, y: number) {
     );
 }
 for (const side of ['A', 'B'] as const) {
-  test(`facecam hole and side-colour border on ${side} (SIMULATED)`, async ({ page }) => {
+  test(`facecam hole and neutral hairline border on ${side} (SIMULATED)`, async ({ page }) => {
     const x = side === 'A' ? 1440 : 40;
     const { snapshot, sockets } = await openLayout(page, side, `cutout=${x},700,440,340&debug=1`);
     expect((await pixel(page, x + 220, 870))[3]).toBe(0);
-    expect(await pixel(page, x + 3, 870)).toEqual(
-      side === 'A' ? [230, 159, 0, 255] : [86, 180, 233, 255],
-    );
+    const border = await pixel(page, x, 870);
+    expect(border[3]).toBeGreaterThan(40);
+    expect(border[3]).toBeLessThan(90);
+    expect(Math.abs(border[0]! - border[2]!)).toBeLessThan(8);
     await page.screenshot({ path: path.join(SHOTS, `facecam-${side}.png`) });
     const now = NOW + 1800;
     const ready = { participants: 10, quorum: 10, progress: 1, ready: true };
@@ -177,6 +180,8 @@ for (const side of ['A', 'B'] as const) {
     expect((await pixel(page, side === 'A' ? 1919 : 0, 500))[3]).toBeGreaterThan(0);
     expect((await pixel(page, side === 'A' ? 100 : 1800, 540))[3]).toBe(0);
     expect((await pixel(page, 1000, 100))[3]).toBe(0);
+    expect((await pixel(page, 100, 100))[3]).toBeGreaterThan(0);
+    expect(await page.evaluate('window.crossoverOverlay.inspect().compactScoreBug')).toBe(true);
     await page.screenshot({ path: path.join(SHOTS, `seam-fit-${side}.png`) });
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.screenshot({ path: path.join(SHOTS, `seam-fit-${side}-720p.png`) });
