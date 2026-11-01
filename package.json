@@ -1,0 +1,40 @@
+{
+  "name": "crossover-stunt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Two streams. One picture. OBS overlay where two Twitch chats reveal one hidden picture together. Built with OpenAI Codex.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.5.1",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/server/index.ts",
+    "demo": "node --env-file-if-exists=.env --import tsx src/server/index.ts --demo",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=.env dist/server/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "browsers:install": "node scripts/playwright.mjs install chromium",
+    "test:e2e": "node scripts/playwright.mjs test",
+    "typecheck": "tsc --noEmit",
+    "lint": "prettier --check .",
+    "format": "prettier --write .",
+    "share": "node --env-file-if-exists=.env scripts/share.mjs",
+    "verify:server": "node --import tsx scripts/verify-server.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.0",
+    "fast-check": "^4.3.0",
+    "prettier": "^3.6.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  }
+}

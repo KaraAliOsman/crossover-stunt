@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en" class="tool">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossover Stunt — Control</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/control/control.css" />
+    <script type="module" src="/control/control.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#stunt">Skip to stunt controls</a>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+        <div>
+          <h1>Crossover Stunt</h1>
+          <p class="tagline">Two streams. One picture.</p>
+        </div>
+      </div>
+      <div class="topbar-status">
+        <span id="phase-chip" class="chip phase-chip" data-phase="idle">Idle</span>
+        <span id="server-status" class="server-status" data-state="connecting"
+          >Connecting to server…</span
+        >
+      </div>
+    </header>
+
+    <p id="demo-banner" class="demo-banner" hidden>DEMO — SIMULATED crowd, no Twitch</p>
+    <p id="server-banner" class="server-banner" role="alert" hidden></p>
+    <p id="announcer" class="sr-only" aria-live="polite"></p>
+
+    <div class="layout">
+      <main class="main-col">
+        <!-- STUNT: live scoreboard, round settings, CALL / RESET -->
+        <section id="stunt" class="card stunt-card" aria-labelledby="stunt-title" tabindex="-1">
+          <div class="card-head">
+            <h2 id="stunt-title">Stunt</h2>
+            <span id="round-mode" class="card-meta">No round yet</span>
+          </div>
+
+          <div class="scoreboard">
+            <div class="side-meter" id="meter-A" data-side="A">
+              <div class="side-meter-head">
+                <span class="side-tag" aria-hidden="true">A</span>
+                <span class="side-label" id="label-A">Side A</span>
+                <span class="side-flag" id="flag-A" hidden></span>
+              </div>
+              <p class="side-count">
+                <span id="count-A">0</span><span class="slash">/</span><span id="quorum-A">–</span>
+                <span class="side-count-unit">people</span>
+              </p>
+              <div
+                class="meter"
+                id="bar-A"
+                role="progressbar"
+                aria-labelledby="label-A"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <span class="meter-fill"></span>
+              </div>
+            </div>
+
+            <div class="clock">
+              <p id="countdown" class="countdown">0:45</p>
+              <p id="clock-caption" class="clock-caption">Ready to CALL</p>
+            </div>
+
+            <div class="side-meter" id="meter-B" data-side="B">
+              <div class="side-meter-head">
+                <span class="side-tag" aria-hidden="true">B</span>
+                <span class="side-label" id="label-B">Side B</span>
+                <span class="side-flag" id="flag-B" hidden></span>
+              </div>
+              <p class="side-count">
+                <span id="count-B">0</span><span class="slash">/</span><span id="quorum-B">–</span>
+                <span class="side-count-unit">people</span>
+              </p>
+              <div
+                class="meter"
+                id="bar-B"
+                role="progressbar"
+                aria-labelledby="label-B"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <span class="meter-fill"></span>
+              </div>
+            </div>
+          </div>
+          <p id="round-summary" class="round-summary"></p>
+
+          <form id="stunt-form" class="stunt-form" novalidate>
+            <div class="settings">
+              <fieldset class="field">
+                <legend>Duration</legend>
+                <div class="seg">
+                  <label
+                    ><input type="radio" name="duration" value="30000" /><span>30 s</span></label
+                  >
+                  <label
+                    ><input type="radio" name="duration" value="45000" checked /><span
+                      >45 s</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="duration" value="60000" /><span>60 s</span></label
+                  >
+                </div>
+              </fieldset>
+              <div class="field">
+                <label for="min-quorum">Minimum people</label>
+                <input
+                  id="min-quorum"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  step="1"
+                  value="3"
+                  inputmode="numeric"
+                  aria-describedby="quorum-hint"
+                />
+              </div>
+              <div class="field">
+                <label for="quorum-ratio">Share of recent chatters</label>
+                <div class="input-suffix">
+                  <input
+                    id="quorum-ratio"
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value="40"
+                    inputmode="numeric"
+                    aria-describedby="quorum-hint"
+                  />
+                  <span aria-hidden="true">%</span>
+                </div>
+              </div>
+              <fieldset class="field overrides">
+                <legend>Fixed quorum <span class="optional">optional</span></legend>
+                <div class="override-row">
+                  <label class="check"
+                    ><input type="checkbox" id="override-A-on" /> <span>A</span></label
+                  >
+                  <input
+                    id="override-A"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    step="1"
+                    value="10"
+                    inputmode="numeric"
+                    aria-label="Fixed quorum for side A"
+                    disabled
+                  />
+                  <label class="check"
+                    ><input type="checkbox" id="override-B-on" /> <span>B</span></label
+                  >
+                  <input
+                    id="override-B"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    step="1"
+                    value="10"
+                    inputmode="numeric"
+                    aria-label="Fixed quorum for side B"
+                    disabled
+                  />
+                </div>
+              </fieldset>
+            </div>
+            <p id="quorum-hint" class="hint">
+              Each side needs max(minimum, share × people who chatted recently) distinct people,
+              frozen when you CALL. A fixed quorum replaces that for its side.
+            </p>
+
+            <div class="call-row">
+              <button type="submit" id="call-btn" class="btn btn-call" aria-describedby="call-sub">
+                <span class="btn-call-label">CALL</span>
+                <span class="btn-call-sub" id="call-sub">45 s · both chats</span>
+              </button>
+              <button type="button" id="reset-btn" class="btn btn-reset">RESET</button>
+            </div>
+            <p id="call-blocker" class="hint call-blocker" hidden></p>
+            <p id="stunt-error" class="msg msg-error" role="alert" hidden></p>
+            <p id="stunt-status" class="msg msg-ok" role="status" hidden></p>
+          </form>
+        </section>
+
+        <!-- PICTURE: presets, text, image upload and the 10 px/card preview -->
+        <section id="picture" class="card" aria-labelledby="picture-title">
+          <div class="card-head">
+            <h2 id="picture-title">Hidden picture</h2>
+            <span id="grid-size" class="card-meta">96 × 27 cards · crossover</span>
+          </div>
+
+          <fieldset class="field">
+            <legend class="sr-only">Picture source</legend>
+            <div class="seg seg-source">
+              <label
+                ><input type="radio" name="source" value="preset" checked /><span
+                  >Preset</span
+                ></label
+              >
+              <label><input type="radio" name="source" value="text" /><span>Text</span></label>
+              <label><input type="radio" name="source" value="image" /><span>Image</span></label>
+            </div>
+          </fieldset>
+
+          <div id="panel-preset" class="source-panel">
+            <fieldset class="field">
+              <legend class="sr-only">Preset</legend>
+              <div class="preset-grid">
+                <label class="preset"
+                  ><input type="radio" name="preset" value="heart" /><span class="preset-body"
+                    ><canvas class="preset-thumb" data-preset="heart" aria-hidden="true"></canvas
+                    ><span class="preset-name">HEART</span></span
+                  ></label
+                >
+                <label class="preset"
+                  ><input type="radio" name="preset" value="face" /><span class="preset-body"
+                    ><canvas class="preset-thumb" data-preset="face" aria-hidden="true"></canvas
+                    ><span class="preset-name">FACE</span></span
+                  ></label
+                >
+                <label class="preset"
+                  ><input type="radio" name="preset" value="gg" /><span class="preset-body"
+                    ><canvas class="preset-thumb" data-preset="gg" aria-hidden="true"></canvas
+                    ><span class="preset-name">GG</span></span
+                  ></label
+                >
+                <label class="preset"
+                  ><input type="radio" name="preset" value="hype" /><span class="preset-body"
+                    ><canvas class="preset-thumb" data-preset="hype" aria-hidden="true"></canvas
+                    ><span class="preset-name">HYPE</span></span
+                  ></label
+                >
+                <label class="preset"
+                  ><input type="radio" name="preset" value="versus" checked /><span
+                    class="preset-body"
+                    ><canvas class="preset-thumb" data-preset="versus" aria-hidden="true"></canvas
+                    ><span class="preset-name" id="preset-versus-name">A + B</span></span
+                  ></label
+                >
+                <label class="preset"
+                  ><input type="radio" name="preset" value="boss" /><span class="preset-body"
+                    ><canvas class="preset-thumb" data-preset="boss" aria-hidden="true"></canvas
+                    ><span class="preset-name">NEXT: BOSS FIGHT</span></span
+                  ></label
+                >
+              </div>
+            </fieldset>
+          </div>
+
+          <div id="panel-text" class="source-panel" hidden>
+            <div class="text-lines">
+              <div class="field">
+                <label for="text-line-1">Line 1</label>
+                <input
+                  id="text-line-1"
+                  type="text"
+                  maxlength="40"
+                  autocomplete="off"
+                  spellcheck="false"
+                  value="LET'S GO!"
+                  aria-describedby="text-hint"
+                />
+              </div>
+              <div class="field">
+                <label for="text-line-2">Line 2 <span class="optional">optional</span></label>
+                <input
+                  id="text-line-2"
+                  type="text"
+                  maxlength="40"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-describedby="text-hint"
+                />
+              </div>
+            </div>
+            <p id="text-hint" class="hint">
+              Letters A–Z, digits and <code>. , ! ? : - + x / &amp; ' #</code>. Text is scaled up as
+              far as it fits; long lines wrap.
+            </p>
+            <div class="palette-pickers">
+              <fieldset class="field">
+                <legend>Text colour</legend>
+                <div class="swatches" id="fg-swatches"></div>
+              </fieldset>
+              <fieldset class="field">
+                <legend>Background</legend>
+                <div class="swatches" id="bg-swatches"></div>
+              </fieldset>
+            </div>
+            <p id="text-warning" class="msg msg-warn" hidden></p>
+          </div>
+
+          <div id="panel-image" class="source-panel" hidden>
+            <!-- The real file input stays focusable; the dropzone label is its visible face. -->
+            <input
+              id="image-file"
+              class="file-input"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+            />
+            <label class="dropzone" id="dropzone" for="image-file">
+              <span class="dropzone-title">Choose or drop an image</span>
+              <span class="dropzone-sub" id="image-name"
+                >PNG, JPEG, WebP or GIF. Use art you own or have rights to.</span
+              >
+            </label>
+            <p class="hint" id="image-hint">
+              Cropped to fill the grid (cover), then every card snaps to the nearest of the 8
+              palette colours.
+            </p>
+          </div>
+
+          <figure class="preview">
+            <div class="preview-captions" id="preview-captions">
+              <span class="cap cap-a"
+                ><span class="side-dot" aria-hidden="true"></span
+                ><span id="cap-a">A · left half</span></span
+              >
+              <span class="cap cap-b"
+                ><span class="side-dot" aria-hidden="true"></span
+                ><span id="cap-b">B · right half</span></span
+              >
+            </div>
+            <div class="preview-frame">
+              <canvas id="preview" role="img" aria-label="Preview of the hidden picture"></canvas>
+            </div>
+            <figcaption id="preview-caption" class="hint">
+              Preview at 10 px per card. Viewers see it rebuilt from coarse blocks as people chat;
+              the last detail appears only in the joint reveal.
+            </figcaption>
+          </figure>
+          <p id="picture-error" class="msg msg-error" role="alert" hidden></p>
+        </section>
+      </main>
+
+      <aside class="side-col" aria-label="Setup">
+        <!-- TWITCH -->
+        <section id="twitch" class="card" aria-labelledby="twitch-title">
+          <div class="card-head">
+            <h2 id="twitch-title">Twitch</h2>
+            <span id="twitch-chip" class="chip" data-tone="muted">…</span>
+          </div>
+          <p id="twitch-demo" class="hint" hidden>
+            Demo mode never connects to Twitch and never sends chat messages. Every person in a
+            round is a SIMULATED virtual chatter.
+          </p>
+          <p id="twitch-account" class="account" hidden>
+            Signed in as <strong id="twitch-login"></strong>
+          </p>
+          <div id="twitch-auth" class="auth" hidden>
+            <p>
+              Open
+              <a
+                id="twitch-verify-link"
+                href="https://www.twitch.tv/activate"
+                target="_blank"
+                rel="noopener noreferrer"
+                >twitch.tv/activate</a
+              >
+              and enter:
+            </p>
+            <p class="user-code" id="twitch-code" aria-label="Twitch activation code"></p>
+            <div class="row">
+              <button type="button" class="btn btn-small" id="twitch-copy-code">Copy code</button>
+              <button
+                type="button"
+                class="btn btn-small"
+                id="twitch-reveal-code"
+                aria-controls="twitch-code"
+                aria-pressed="false"
+              >
+                Show
+              </button>
+              <span class="hint">Waiting for you to approve on Twitch…</span>
+            </div>
+            <p class="hint">
+              Keep this panel off stream while connecting: whoever enters the code first links their
+              account. The link above already carries the code.
+            </p>
+          </div>
+          <p id="twitch-server-error" class="msg msg-error" hidden></p>
+          <div class="row">
+            <button type="button" id="twitch-connect" class="btn btn-primary" hidden disabled>
+              Connect Twitch
+            </button>
+            <button type="button" id="twitch-signout" class="btn btn-ghost" hidden>Sign out</button>
+          </div>
+          <p id="twitch-error" class="msg msg-error" role="alert" hidden></p>
+          <p id="twitch-last-chat" class="hint" hidden></p>
+        </section>
+
+        <!-- CHANNELS + MODE -->
+        <section id="channels" class="card" aria-labelledby="channels-title">
+          <div class="card-head">
+            <h2 id="channels-title">Channels</h2>
+          </div>
+          <fieldset class="field">
+            <legend>Mode</legend>
+            <div class="seg seg-mode">
+              <label
+                ><input type="radio" name="mode" value="crossover" checked /><span
+                  >Crossover <small>A + B</small></span
+                ></label
+              >
+              <label
+                ><input type="radio" name="mode" value="single" /><span
+                  >Single <small>A only</small></span
+                ></label
+              >
+            </div>
+          </fieldset>
+          <form id="channels-form" class="channels-form" novalidate>
+            <div class="field">
+              <label for="channel-a"
+                ><span class="side-dot side-dot-a" aria-hidden="true"></span>A · Your channel</label
+              >
+              <input
+                id="channel-a"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="25"
+                placeholder="Signed-in account"
+                aria-describedby="channel-a-current"
+              />
+              <p id="channel-a-current" class="hint"></p>
+            </div>
+            <div class="field" id="channel-b-field">
+              <label for="channel-b"
+                ><span class="side-dot side-dot-b" aria-hidden="true"></span>B · Partner
+                channel</label
+              >
+              <input
+                id="channel-b"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="25"
+                placeholder="partner_login"
+                aria-describedby="channel-b-current"
+              />
+              <p id="channel-b-current" class="hint"></p>
+            </div>
+            <button type="submit" class="btn" id="channels-save">Save channels</button>
+            <p id="channels-error" class="msg msg-error" role="alert" hidden></p>
+            <p id="channels-status" class="msg msg-ok" role="status" hidden></p>
+          </form>
+          <form id="labels-form" class="channels-form" novalidate>
+            <div class="field">
+              <label for="label-a">A &middot; Team label</label
+              ><input
+                id="label-a"
+                type="text"
+                maxlength="24"
+                placeholder="TEAM ORANGE"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="field">
+              <label for="label-b">B &middot; Team label</label
+              ><input
+                id="label-b"
+                type="text"
+                maxlength="24"
+                placeholder="TEAM BLUE"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <p class="hint">
+              Optional, up to 24 characters. Clear a label to use the channel login.
+            </p>
+            <button type="submit" class="btn" id="labels-save">Save team labels</button>
+            <p id="labels-error" class="msg msg-error" role="alert" hidden></p>
+            <p id="labels-status" class="msg msg-ok" role="status" hidden></p>
+          </form>
+        </section>
+
+        <!-- OVERLAY URLS + SHARE -->
+        <section id="overlays" class="card" aria-labelledby="overlays-title">
+          <div class="card-head">
+            <h2 id="overlays-title">Overlay URLs</h2>
+          </div>
+          <p class="hint">Add each as an OBS Browser Source at 1920 × 1080.</p>
+          <fieldset class="field">
+            <legend>On-stream layout</legend>
+            <div class="seg layout-options">
+              <label
+                ><input type="radio" name="layout" value="full" checked /><span>Full</span></label
+              >
+              <label
+                ><input type="radio" name="layout" value="facecam-right" /><span
+                  >Facecam bottom right</span
+                ></label
+              >
+              <label
+                ><input type="radio" name="layout" value="facecam-left" /><span
+                  >Facecam bottom left</span
+                ></label
+              >
+              <label><input type="radio" name="layout" value="seam" /><span>Seam fit</span></label>
+            </div>
+          </fieldset>
+          <div class="url-row">
+            <label for="url-A">A · your OBS</label>
+            <div class="url-field">
+              <input id="url-A" type="text" readonly value="" />
+              <button type="button" class="btn btn-small" data-copy="A">Copy</button>
+            </div>
+          </div>
+          <div class="url-row" id="url-row-B">
+            <label for="url-B">B · OBS on this PC</label>
+            <div class="url-field">
+              <input id="url-B" type="text" readonly value="" />
+              <button type="button" class="btn btn-small" data-copy="B">Copy</button>
+            </div>
+          </div>
+          <div class="url-row" id="url-row-partner">
+            <label for="url-partner">B · partner over the internet</label>
+            <div class="url-field">
+              <input id="url-partner" type="text" readonly value="Not sharing" />
+              <button
+                type="button"
+                class="btn btn-small btn-ghost"
+                id="partner-reveal"
+                aria-pressed="false"
+                disabled
+              >
+                Show
+              </button>
+              <button type="button" class="btn btn-small" data-copy="partner" disabled>Copy</button>
+            </div>
+            <p class="hint" id="share-hint">
+              Opens a temporary tunnel (cloudflared) that exposes only the read-only overlay B. The
+              link contains a room token: send it privately.
+            </p>
+            <div class="row">
+              <button type="button" class="btn" id="share-start">Start sharing</button>
+              <button type="button" class="btn btn-ghost" id="share-stop" hidden>
+                Stop sharing
+              </button>
+              <span id="share-chip" class="chip" data-tone="muted">Off</span>
+            </div>
+            <p id="share-error" class="msg msg-error" role="alert" hidden></p>
+          </div>
+          <p id="copy-status" class="sr-only" aria-live="polite"></p>
+        </section>
+
+        <!-- SIMULATOR (demo only) -->
+        <section id="simulator" class="card sim-card" aria-labelledby="simulator-title" hidden>
+          <div class="card-head">
+            <h2 id="simulator-title">Simulator</h2>
+            <span class="badge">SIMULATED</span>
+          </div>
+          <p class="hint">
+            Adds virtual people to a side. Nothing is sent to Twitch. Outside a round they only
+            raise the next quorum.
+          </p>
+          <div class="sim-rows">
+            <div class="sim-row" data-side="A">
+              <span class="sim-side"
+                ><span class="side-dot side-dot-a" aria-hidden="true"></span
+                ><span id="sim-label-A">A</span></span
+              >
+              <button type="button" class="btn btn-small" data-sim-side="A" data-sim-count="1">
+                +1
+              </button>
+              <button type="button" class="btn btn-small" data-sim-side="A" data-sim-count="5">
+                +5
+              </button>
+              <button type="button" class="btn btn-small" data-sim-side="A" data-sim-count="25">
+                +25
+              </button>
+            </div>
+            <div class="sim-row" data-side="B">
+              <span class="sim-side"
+                ><span class="side-dot side-dot-b" aria-hidden="true"></span
+                ><span id="sim-label-B">B</span></span
+              >
+              <button type="button" class="btn btn-small" data-sim-side="B" data-sim-count="1">
+                +1
+              </button>
+              <button type="button" class="btn btn-small" data-sim-side="B" data-sim-count="5">
+                +5
+              </button>
+              <button type="button" class="btn btn-small" data-sim-side="B" data-sim-count="25">
+                +25
+              </button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-small btn-ghost" id="sim-both">
+            +5 in both chats (same people)
+          </button>
+          <h3 class="sub-title">Showcase rounds</h3>
+          <div class="row showcase">
+            <button type="button" class="btn btn-small" data-showcase="crossover">Crossover</button>
+            <button type="button" class="btn btn-small" data-showcase="so-close">So close</button>
+            <button type="button" class="btn btn-small" data-showcase="single">Single</button>
+          </div>
+          <p id="sim-error" class="msg msg-error" role="alert" hidden></p>
+          <p id="sim-status" class="msg msg-sim" role="status" hidden></p>
+          <p class="hint"><a href="/dev">Open the SIMULATED injector</a></p>
+        </section>
+      </aside>
+    </div>
+  </body>
+</html>

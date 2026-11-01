@@ -1,0 +1,85 @@
+/* Overlay page: fully transparent so the stream shows through the 4 px gaps between cards. */
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Keep 16:9 when the browser source or window is not exactly 1920×1080. */
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Shown only in a normal browser until the first gesture unlocks Web Audio (never in OBS). */
+.sound-chip {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 12px 16px;
+  border: 2px solid #f0e442;
+  border-radius: 999px;
+  background: rgba(16, 24, 32, 0.92);
+  color: #f5f5f0;
+  font:
+    800 18px/1 system-ui,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+
+.sound-chip[hidden] {
+  display: none;
+}
+
+.sound-chip:focus-visible {
+  outline: 3px solid #56b4e9;
+  outline-offset: 3px;
+}
+
+/* Speaker glyph drawn with borders so no icon font or image is needed. */
+.sound-chip__icon {
+  position: relative;
+  width: 8px;
+  height: 10px;
+  margin-right: 10px;
+  background: #f0e442;
+  border-radius: 2px;
+}
+
+/* Cone: a left-pointing border triangle whose apex sits on the speaker body. */
+.sound-chip__icon::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 4px;
+  border-style: solid;
+  border-width: 10px 10px 10px 0;
+  border-color: transparent #f0e442 transparent transparent;
+}

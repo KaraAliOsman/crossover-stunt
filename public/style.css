@@ -1,0 +1,603 @@
+/*
+ * Shared look of the local tool pages (control panel and SIMULATED injector): a dark broadcast
+ * console lit like a stadium at night. Everything is scoped to `html.tool`, so a page that links
+ * this sheet without opting in (such as a transparent OBS overlay) stays untouched.
+ */
+
+html.tool {
+  color-scheme: dark;
+  --bg: #090c12;
+  --surface: #11161f;
+  --surface-2: #171e2a;
+  --surface-3: #1e2635;
+  --line: #242d3f;
+  --line-strong: #364261;
+  --text: #eef1f7;
+  --muted: #a1abc0;
+  --faint: #6f7a93;
+  /* Side colours = palette orange / sky (src/engine/artwork.ts), readable for colour-blind viewers. */
+  --side-a: #e69f00;
+  --side-b: #56b4e9;
+  --ok: #34d399;
+  --warn: #f0e442;
+  --error: #ff7f50;
+  --info: #7cc6f2;
+  --focus: #f0e442;
+  --live: #ff5a36;
+  --radius: 12px;
+  --radius-small: 8px;
+  --shadow: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 12px 32px rgb(0 0 0 / 35%);
+  background: var(--bg);
+  color: var(--text);
+  font:
+    15px/1.5 system-ui,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.tool *,
+.tool *::before,
+.tool *::after {
+  box-sizing: border-box;
+}
+
+.tool body {
+  margin: 0;
+  min-height: 100vh;
+  /* Two floodlights over the stands, one per side colour. */
+  background:
+    radial-gradient(60rem 22rem at 12% -8rem, rgb(230 159 0 / 9%), transparent 70%),
+    radial-gradient(60rem 22rem at 88% -8rem, rgb(86 180 233 / 10%), transparent 70%), var(--bg);
+}
+
+.tool h1,
+.tool h2,
+.tool h3,
+.tool p,
+.tool figure {
+  margin: 0;
+}
+
+.tool a {
+  color: var(--info);
+  text-underline-offset: 2px;
+}
+
+.tool code {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.92em;
+  color: var(--text);
+  background: var(--surface-3);
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+}
+
+.tool :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.tool .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tool .skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 10;
+  padding: 0.5rem 0.9rem;
+  background: var(--focus);
+  color: #101820;
+  font-weight: 700;
+  border-radius: var(--radius-small);
+}
+
+.tool .skip-link:focus {
+  top: 1rem;
+}
+
+/* ---- Top bar ------------------------------------------------------------------------------ */
+
+.tool .topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 3vw, 2rem);
+  border-bottom: 1px solid var(--line);
+  background: rgb(9 12 18 / 70%);
+}
+
+.tool .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.tool .brand h1 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.tool .tagline {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* A tiny card stunt: the eight palette colours held up by the crowd. */
+.tool .brand-mark {
+  display: grid;
+  grid-template-columns: repeat(4, 9px);
+  gap: 2px;
+}
+
+.tool .brand-mark i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: #101820;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+}
+
+.tool .brand-mark i:nth-child(1) {
+  background: #e69f00;
+}
+.tool .brand-mark i:nth-child(2) {
+  background: #f0e442;
+}
+.tool .brand-mark i:nth-child(3) {
+  background: #56b4e9;
+}
+.tool .brand-mark i:nth-child(4) {
+  background: #0072b2;
+}
+.tool .brand-mark i:nth-child(5) {
+  background: #d55e00;
+}
+.tool .brand-mark i:nth-child(6) {
+  background: #f5f5f0;
+}
+.tool .brand-mark i:nth-child(7) {
+  background: #009e73;
+}
+.tool .brand-mark i:nth-child(8) {
+  background: #101820;
+}
+
+/* Hazard-striped SIMULATED / demo banner: impossible to miss on a screen share. */
+.tool .demo-banner {
+  padding: 0.55rem clamp(1rem, 3vw, 2rem);
+  background: repeating-linear-gradient(-45deg, var(--warn) 0 18px, #e3d63b 18px 36px);
+  color: #101820;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+/* ---- Cards -------------------------------------------------------------------------------- */
+
+.tool .card {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface) 4rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.tool .card:focus {
+  outline: none;
+}
+
+.tool .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tool .card-head h2 {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tool .card-meta {
+  color: var(--faint);
+  font-size: 0.82rem;
+}
+
+.tool .sub-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.tool .row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.tool .hint {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.tool .optional {
+  color: var(--faint);
+  font-weight: 400;
+  font-size: 0.85em;
+  margin-left: 0.25rem;
+}
+
+/* ---- Buttons ------------------------------------------------------------------------------ */
+
+.tool .btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-small);
+  background: var(--surface-3);
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease;
+}
+
+.tool a.btn {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.tool .btn:hover:not(:disabled) {
+  background: #263044;
+  border-color: #4a587a;
+}
+
+.tool .btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.tool .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.tool .btn[aria-busy='true'] {
+  cursor: progress;
+}
+
+.tool .btn-primary {
+  background: #6441a5;
+  border-color: #8b6bd1;
+}
+
+.tool .btn-primary:hover:not(:disabled) {
+  background: #7553b8;
+  border-color: #a68ae0;
+}
+
+.tool .btn-ghost {
+  background: transparent;
+}
+
+.tool .btn-small {
+  min-height: 2.1rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.88rem;
+}
+
+/* ---- Chips and badges --------------------------------------------------------------------- */
+
+.tool .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--muted);
+  background: rgb(161 171 192 / 12%);
+  border: 1px solid rgb(161 171 192 / 22%);
+}
+
+.tool .chip[data-tone='ok'] {
+  color: var(--ok);
+  background: rgb(52 211 153 / 12%);
+  border-color: rgb(52 211 153 / 35%);
+}
+
+.tool .chip[data-tone='warn'] {
+  color: var(--warn);
+  background: rgb(240 228 66 / 10%);
+  border-color: rgb(240 228 66 / 35%);
+}
+
+.tool .chip[data-tone='error'] {
+  color: var(--error);
+  background: rgb(255 127 80 / 12%);
+  border-color: rgb(255 127 80 / 40%);
+}
+
+.tool .chip[data-tone='info'] {
+  color: var(--info);
+  background: rgb(124 198 242 / 12%);
+  border-color: rgb(124 198 242 / 35%);
+}
+
+/* SIMULATED is never subtle: same yellow as the overlay badge. */
+.tool .badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background: var(--warn);
+  color: #101820;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+/* ---- Forms -------------------------------------------------------------------------------- */
+
+.tool fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.tool .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.tool .field > label,
+.tool .field > legend {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--muted);
+  padding: 0;
+  margin-bottom: 0.35rem;
+}
+
+.tool .field > label {
+  margin-bottom: 0;
+}
+
+.tool input[type='text'],
+.tool input[type='number'],
+.tool select {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-small);
+  background: #0c1018;
+  color: var(--text);
+  font: inherit;
+}
+
+.tool input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
+
+.tool input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tool input[aria-invalid='true'] {
+  border-color: var(--error);
+  box-shadow: 0 0 0 1px var(--error);
+}
+
+.tool input[readonly] {
+  color: var(--muted);
+  background: #0e131c;
+}
+
+.tool input::placeholder {
+  color: var(--faint);
+}
+
+.tool .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.tool input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--side-b);
+}
+
+/* Segmented control: real radio inputs (keyboard: arrow keys), visually merged into one bar. */
+.tool .seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #0c1018;
+}
+
+.tool .seg label {
+  position: relative;
+  flex: 1 1 auto;
+}
+
+.tool .seg input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.tool .seg span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 7px;
+  color: var(--muted);
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.tool .seg span small {
+  color: var(--faint);
+  font-weight: 500;
+}
+
+.tool .seg label:hover span {
+  color: var(--text);
+}
+
+.tool .seg input:checked + span {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow:
+    inset 0 0 0 1px var(--line-strong),
+    0 1px 2px rgb(0 0 0 / 40%);
+}
+
+.tool .seg input:checked + span small {
+  color: var(--muted);
+}
+
+.tool .seg input:focus-visible + span {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* ---- Inline messages ---------------------------------------------------------------------- */
+
+.tool .msg {
+  font-size: 0.88rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-small);
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface-3);
+}
+
+.tool .msg-error {
+  color: #ffd3c2;
+  border-left-color: var(--error);
+  background: rgb(255 127 80 / 10%);
+}
+
+.tool .msg-ok {
+  color: #c9f5e3;
+  border-left-color: var(--ok);
+  background: rgb(52 211 153 / 8%);
+}
+
+.tool .msg-warn {
+  color: #f6f1b5;
+  border-left-color: var(--warn);
+  background: rgb(240 228 66 / 8%);
+}
+
+.tool .msg-sim {
+  color: #f6f1b5;
+  border-left-color: var(--warn);
+  background: rgb(240 228 66 / 8%);
+}
+
+.tool [hidden] {
+  display: none !important;
+}
+
+/* ---- SIMULATED injector page (/dev) ------------------------------------------------------- */
+
+.tool .dev-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.25rem clamp(1rem, 3vw, 2rem) 3rem;
+}
+
+.tool .injector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.9rem;
+  align-items: end;
+}
+
+@media (max-width: 720px) {
+  .tool .injector {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.tool .live-status {
+  font-size: 1.05rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.tool .showcase .btn {
+  flex: 1 1 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool *,
+  .tool *::before,
+  .tool *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

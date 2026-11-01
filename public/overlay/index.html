@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossover Stunt overlay</title>
+    <link rel="stylesheet" href="/overlay/overlay.css" />
+    <script type="module" src="/overlay/overlay.js"></script>
+  </head>
+  <body>
+    <!-- Transparent 1920×1080 stage: draws nothing until a round is live. -->
+    <canvas id="stage" width="1920" height="1080" aria-hidden="true"></canvas>
+    <p id="status" class="visually-hidden" role="status" aria-live="polite"></p>
+    <button id="sound-chip" class="sound-chip" type="button" hidden>
+      <span class="sound-chip__icon" aria-hidden="true"></span>
+      Click to enable sound
+    </button>
+  </body>
+</html>

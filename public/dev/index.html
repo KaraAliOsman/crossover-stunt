@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" class="tool">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossover Stunt — SIMULATED injector</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/dev/dev.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+        <div>
+          <h1>SIMULATED injector</h1>
+          <p class="tagline">Crossover Stunt · virtual crowd for demos and tests</p>
+        </div>
+      </div>
+      <a class="btn btn-small btn-ghost" href="/control">Back to control</a>
+    </header>
+    <p class="demo-banner">SIMULATED — virtual people only, nothing is sent to Twitch</p>
+
+    <main class="dev-main">
+      <section class="card" aria-labelledby="live-title">
+        <div class="card-head">
+          <h2 id="live-title">Current round</h2>
+          <span class="badge">SIMULATED</span>
+        </div>
+        <p id="live-status" class="live-status" role="status">Connecting to the server…</p>
+      </section>
+
+      <section class="card" aria-labelledby="injector-title">
+        <div class="card-head">
+          <h2 id="injector-title">Virtual chat</h2>
+        </div>
+        <p class="hint">
+          Generates distinct virtual chatters on one side through the same pipeline as Twitch chat.
+          Requires <code>pnpm demo</code>. The seed advances after each send, so every click adds
+          new people; type an earlier seed to replay the same virtual people (they add nobody new).
+          Injecting does not stop <code>--autoplay</code>: press RESET, then CALL, in the control
+          panel first to drive your own round.
+        </p>
+        <form id="injector" class="injector" novalidate>
+          <div class="field">
+            <label for="inject-side">Side</label>
+            <select id="inject-side" name="side">
+              <option>A</option>
+              <option>B</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="inject-count">Distinct virtual people</label>
+            <select id="inject-count" name="count">
+              <option>5</option>
+              <option>25</option>
+              <option>300</option>
+              <option>3000</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="inject-seed">Replay seed</label>
+            <input
+              id="inject-seed"
+              name="seed"
+              type="number"
+              min="0"
+              step="1"
+              value="1"
+              inputmode="numeric"
+              required
+            />
+          </div>
+          <button type="submit" class="btn btn-primary" id="inject-submit">
+            Inject SIMULATED chat
+          </button>
+        </form>
+        <output id="result" class="msg msg-sim" aria-live="polite" hidden></output>
+      </section>
+
+      <section class="card" aria-labelledby="showcase-title">
+        <div class="card-head">
+          <h2 id="showcase-title">Showcase rounds</h2>
+        </div>
+        <p class="hint">
+          Scripted SIMULATED rounds for judging and recordings: a full crossover with a lagging
+          side, a crossover that times out at 9/12, and a single-channel Card Stunt.
+        </p>
+        <div class="row showcase">
+          <button type="button" class="btn" data-showcase="crossover">Crossover</button>
+          <button type="button" class="btn" data-showcase="so-close">So close</button>
+          <button type="button" class="btn" data-showcase="single">Single</button>
+        </div>
+        <output id="showcase-result" class="msg msg-sim" aria-live="polite" hidden></output>
+      </section>
+    </main>
+  </body>
+</html>

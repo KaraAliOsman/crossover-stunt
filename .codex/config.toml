@@ -1,0 +1,4 @@
+# Project-local conventions. Loaded only when the user trusts this project.
+# https://learn.chatgpt.com/docs/config-file/config-basic
+# Deliberately no provider, model, credentials, approval or sandbox overrides.
+# Instructions live in AGENTS.md and reusable workflows in .agents/skills/.
