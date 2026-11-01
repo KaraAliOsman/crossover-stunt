@@ -678,3 +678,26 @@ Frozen contracts and every historical log byte are preserved. Owned test servers
 are absent by PID/port checks; cleanup evidence is in this capture
 directory. Port 3000 was untouched, no real Twitch messages were sent, and no git
 operation was performed. The corrections still await a subsequent live OBS check.
+
+## 2026-11-01 - Final submission documentation and live HUD recheck
+
+OpenAI Codex session/thread `01a194b7-1fa1-7df1-9213-da7b4c07bf8b`, read from
+CODEX_SESSION_ID and CODEX_THREAD_ID. Recorded the operator-reported live recheck
+of the HUD corrections on 2026-11-01, 16:35?16:43 Chile time (UTC?3): efaoangssm
+and efaoangsam, OBS 33, real chats, two crossover HYPE rounds, one single GG round
+and one SO CLOSE round. The operator reports OBS recordings showing the full
+blue waiting name, READY / REVEAL / READY and larger HUD. This was not a live
+session observed by OpenAI Codex; all other unverified items remain.
+
+Updated README Status, Tests and evidence, Innovation, the short v3 Design
+section, and Quickstart/control labels (Advanced, Call the stunt, Reset round /
+Confirm reset). Updated SPEC's current verification status. Copied the four
+operator-supplied JPGs unchanged into docs/media, added an alt-text hero and
+three-image gallery, and noted that the demo video/submission are on Devpost.
+
+`pnpm format`: exit 0. `pnpm lint`: exit 0, all matched files use Prettier style.
+Checked media paths, byte-identical copies, unchanged unverified lists and all
+111 protected product-file hashes. Historical log bytes are preserved. This pass
+changed documentation/media only; no server was started (including port 3000),
+no product behavior changed, and no commit or push was made. Evidence/check logs:
+`test-results/docs-final-pass/`.

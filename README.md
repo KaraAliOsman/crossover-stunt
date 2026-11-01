@@ -1,8 +1,12 @@
 # Crossover Stunt
 
+![Two live Twitch players and their chats showing the HYPE stadium wave across overlays A and B.](docs/media/live-twitch-wave.jpg)
+
 **Two streams. One picture.** Two Twitch communities each refine one half of a hidden picture, live on stream. Every distinct person who types anything in their channel flips the stadium cards on their half one step closer to the image. Neither chat can finish alone: the final detail only appears in a joint reveal once **both** sides reach their quorum. Single-channel **Card Stunt** is the daily-use fallback. Built with **OpenAI Codex** for the Codex x TwitchCon Hackathon.
 
-**Status.** The whole stunt runs end to end in the credential-free SIMULATED demo: pure engine, server, both overlays, control panel and the Playwright seam test. The v3 redesign was also streamed on both real Twitch channels in OBS 33 (operator report and recording crops). That stream exposed three HUD defects, now corrected locally; these corrections await the next live check. Large real crowds and a real partner tunnel remain unverified. See [what is verified](#tests-and-evidence).
+**Status.** The whole stunt runs end to end in the credential-free SIMULATED demo: pure engine, server, both overlays, control panel and the Playwright seam test. An operator-reported live check with OBS recordings on 2026-11-01, 16:35–16:43 Chile time (UTC−3), confirmed the v3 HUD corrections on both real Twitch channels in OBS 33. Large real crowds and a real partner tunnel remain unverified. See [what is verified](#tests-and-evidence).
+
+The demo video and submission are on the project's Devpost page.
 
 ## Quickstart for judges (no Twitch, no OBS)
 
@@ -16,8 +20,8 @@ pnpm demo --autoplay
 Then open these in a Chromium-based browser (side by side works best):
 
 - [Overlay A](http://127.0.0.1:3000/overlay/a) and [Overlay B](http://127.0.0.1:3000/overlay/b) — the two stream overlays (transparent 1920×1080; the cards are the picture).
-- [Control panel](http://127.0.0.1:3000/control) — what the streamer uses: picture, duration, quorum, CALL / RESET, live counts.
-- [SIMULATED injector](http://127.0.0.1:3000/dev) — add 5, 25, 300 or 3000 virtual people per side (the seed advances after each send, so every click brings new people). It does not stop autoplay: press **RESET** and then **CALL** in the control panel first to drive your own round.
+- [Control panel](http://127.0.0.1:3000/control) — picture, duration, live matchup, **Call the stunt** and **Reset round**. Quorum settings are under **Advanced**.
+- [SIMULATED injector](http://127.0.0.1:3000/dev) — add 5, 25, 300 or 3000 virtual people per side (the seed advances after each send, so every click brings new people). It does not stop autoplay.
 
 `--autoplay` loops three scripted rounds (about 25 s each on average):
 
@@ -25,9 +29,17 @@ Then open these in a Chromium-based browser (side by side works best):
 2. **So close** — GG. B stalls at 9/12 and the round times out with `SO CLOSE`.
 3. **Single** — GG Card Stunt on overlay A only.
 
-Clicking CALL, RESET or a showcase button in the control panel stops autoplay so you can drive it yourself (plain `pnpm demo` starts without autoplay). Everything virtual is labeled **SIMULATED** on screen and nothing is sent to Twitch in demo mode. A normal browser shows a small "Click to enable sound" chip; OBS hides the chip and may allow autoplay, which still needs a real OBS check before going live. Stop the server with **Ctrl+C**. If port 3000 is busy, use another one (PowerShell: `$env:PORT=3001; pnpm demo --autoplay`, or `PORT=3001` in `.env`) and change the port in the links above.
+To drive a round yourself, click **Reset round**, then **Confirm reset**. Choose a picture and duration; open **Advanced** to change the minimum people, share of recent chatters or fixed quorum. Click **Call the stunt**, then add people with the injector. Calling a stunt, confirming a reset or choosing a showcase stops autoplay (plain `pnpm demo` starts without autoplay).
+
+Everything virtual is labeled **SIMULATED** on screen and nothing is sent to Twitch in demo mode. A normal browser shows a small "Click to enable sound" chip; OBS hides the chip and may allow autoplay, which still needs a real OBS check before going live. Stop the server with **Ctrl+C**. If port 3000 is busy, use another one (PowerShell: `$env:PORT=3001; pnpm demo --autoplay`, or `PORT=3001` in `.env`) and change the port in the links above.
 
 ## How it works
+
+| Waiting on the other chat                                                                                                                                   | Stats finale                                                                                                                                        | Control panel                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| <img src="docs/media/live-waiting-on-you.jpg" alt="The ready stream waits for efaoangsam while its partner displays THEY'RE WAITING ON YOU." width="280" /> | <img src="docs/media/live-finale-A.jpg" alt="The joined HYPE picture above people, streams and crossed-over statistics on stream A." width="280" /> | <img src="docs/media/control-panel.jpg" alt="The live control panel with team counts, a HYPE preview and the running round." width="280" /> |
+
+Operator-supplied Twitch/OBS images and live control-panel capture.
 
 - **Picture.** The control panel turns a preset, 1–2 lines of text (built-in 5×7 pixel font) or an uploaded image into palette indices on a 96×27 card grid (48×27 per overlay, 40 px cards; 8 colorblind-friendly colors).
 - **Refinement.** On CALL the server builds one deterministic greedy quadtree plan per side: each step splits the block with the largest color error. Each side's progress is `participants / quorum`; the overlay shows the matching number of steps. The final detail (about 20 % of the steps, and at least one split for a non-uniform picture) stays hidden until the joint reveal.
@@ -53,7 +65,7 @@ Clicking CALL, RESET or a showcase button in the control panel stops autoplay so
    session. Clear a label to follow the channel login; a server restart clears the overrides.
    Local automation can POST `{ "A": "...", "B": "..." }` to `/api/labels`.
 
-6. Pick a picture (crossover defaults to **A + B** using both channel names; **HEART** and **FACE** remain available), a duration (30/45/60 s) and optionally fixed quorums, then **CALL**. CALL is enabled once the Twitch card shows **Connected**; without EventSub nobody would be counted. The app posts the prompt to the required chats, the summary on the reveal (`23 people across 2 streams made this · 4 crossed over`) and `SO CLOSE …` on timeout. The control panel shows whether Twitch accepted or dropped each message; a prompt repeated within 30 s gets a `(take 2)` suffix because Twitch drops identical messages. Messages from your own account never count. Chat counts until the server deadline, but viewers see the stream a few seconds late: add `latencyMs=3000` (about your stream latency) to the overlay URLs so the on-stream countdown reaches 0:00 before the deadline instead of after it.
+6. Pick a picture (crossover defaults to **A + B** using both channel names; **HEART** and **FACE** remain available) and a duration (30/45/60 s). Open **Advanced** if you want to change quorum settings, then click **Call the stunt**. The button is enabled once the Twitch card shows **Connected**; without EventSub nobody would be counted. The app posts the prompt to the required chats, the summary on the reveal (`23 people across 2 streams made this · 4 crossed over`) and `SO CLOSE …` on timeout. The control panel shows whether Twitch accepted or dropped each message; a prompt repeated within 30 s gets a `(take 2)` suffix because Twitch drops identical messages. Messages from your own account never count. Chat counts until the server deadline, but viewers see the stream a few seconds late: add `latencyMs=3000` (about your stream latency) to the overlay URLs so the on-stream countdown reaches 0:00 before the deadline instead of after it.
 
 The broadcast package uses matte paper cards, a shared-clock stadium wave and quiet glass lower thirds. Both teams appear in the score bug; the finale counts PEOPLE, STREAMS and CROSSED OVER. The control panel puts the matchup and chosen picture first, with quorum settings under **Advanced**.
 
@@ -128,6 +140,7 @@ pnpm only allows esbuild's install script (`pnpm-workspace.yaml`). No global ins
   - `control` runs the control panel and dev page against an in-memory API mock, including team labels and layout URL copying.
   - Captures go to `test-results/e2e/`, `test-results/overlay/` and `test-results/control/` (ignored).
 - **Verified live (2026-10-31 and 2026-11-01, Windows 11, OBS 33):** a Public app with the Device Code flow and a real broadcaster account; stored tokens reused after a server restart; **two real channels on one EventSub WebSocket** (efaoangssm + efaoangsam); Helix bot messages in both chats; OBS browser sources rendering overlays A and B on two simultaneous Twitch streams (720p30, 0 dropped stream frames), watched in the twitch.tv players; crossover, single-channel and timed-out (SO CLOSE) rounds; the roar captured in the OBS recordings. Evidence: the demo video (twitch.tv players and both chats on screen). The live tests used our two channels and one viewer account (one person per side).
+- **Operator-reported v3 HUD recheck (2026-11-01, 16:35–16:43 Chile time, UTC−3):** efaoangssm and efaoangsam streamed again from OBS 33 with real chats: two crossover HYPE rounds, one single-channel GG round and one SO CLOSE round. The operator reports OBS recordings showing `WAITING FOR EFAOANGSAM` in full with the blue name, `READY · REVEAL · READY` during the wave, and the larger HUD type. This is operator-reported evidence backed by OBS recordings; OpenAI Codex did not observe the live check itself.
 - **Not verified yet:** real crowds of many distinct people, refresh-token rotation, EventSub reconnect/revocation, Shared Chat, dropped messages, a real cloudflared tunnel and the partner's room cookie inside OBS, and OBS frame rate under heavy load. Per-phase Chromium frame-pacing measurements for this redesign are recorded in CODEX_LOG; they are regression signals, not proof of OBS performance or a sustained 60 fps claim.
 
 [docs/CODEX_LOG.md](docs/CODEX_LOG.md) records the Codex sessions logged so far and the evidence actually gathered in them. Its first entry is the repository scaffold session: its "Deliberately unfinished" list describes the state at the end of that session, not the current one (current status and verification are in this section and in [docs/SPEC.md](docs/SPEC.md)).
@@ -152,7 +165,7 @@ Read [AGENTS.md](AGENTS.md), [docs/SPEC.md](docs/SPEC.md) and [docs/DESIGN.md](d
 
 ## Innovation
 
-Most chat games run inside one community. Here two communities share one picture that neither can see whole: each overlay shows its own half large plus a minimap of the partner's progress (`THEIR SIDE 7/12`), a finished side visibly waits for the other, and success is one synchronized moment on both streams. The v3 package has since been streamed on both channels in OBS 33; its latest HUD corrections await another live check.
+Most chat games run inside one community. Here two communities share one picture that neither can see whole: each overlay shows its own half large plus a minimap of the partner's progress (`THEIR SIDE 7/12`), a finished side visibly waits for the other, and success is one synchronized moment on both streams. The operator-reported OBS 33 recheck on 2026-11-01 confirmed the v3 HUD corrections across two crossover HYPE rounds, a single GG round and a SO CLOSE round, with OBS recordings as evidence.
 
 ## Impact
 
@@ -164,7 +177,7 @@ A pure, property-tested engine; one server-owned clock with timestamped, reload-
 
 ## Design
 
-Stadium flip cards with a top sheen, a staggered ripple per refinement, a zipper along the seam, a left-to-right wave across both streams, confetti and a captioned Web Audio roar. Reduced motion and muted modes keep every state readable (banners, counts, captions). Labels shrink or ellipsize instead of overflowing.
+Archivo headlines and labels pair with Geist Mono data. The score bug uses rolling tabular digits; glass lower-thirds keep one accent. Matte stadium cards make a real flip with a face swap at the midpoint, followed by a shared-clock stadium wave that crosses the A|B seam. A stats end card finishes the reveal. Reduced motion replaces physical movement with fades and brightness. The control panel leads with the matchup and picture preview, one **Call the stunt** action and **Advanced** quorum controls.
 
 ## License
 

@@ -51,7 +51,7 @@ One user token from a **PUBLIC Device Code client** uses `user:read:chat` and `u
 
 Implemented protocol behavior: `RoundPayload` carries the palette and one refinement plan per required side (the hidden picture, sent once per CALL); snapshot `revision` only grows when public content changes; overlays estimate the server clock offset from `serverNowMs` samples, reconnect with exponential backoff and poll `/api/snapshot?round=<id>` while the socket is down; partner access is bound to a room token. Never send participant sets, raw Twitch messages or token data. Both overlay clients render from the same full-image coordinate system; the Playwright seam test checks columns 47|48 against the plan leaves.
 
-### Implementation status (2026-10-31)
+### Implementation status (2026-11-01)
 
 | Route / command                              | Behavior                                                                                                                           |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -68,6 +68,8 @@ Implemented protocol behavior: `RoundPayload` carries the palette and one refine
 Verified locally (Windows 11, Node 24, headless Chromium): Vitest suites (engine properties, server, runtime, access, Twitch module against fake `fetch` and a local `ws` server), Playwright end-to-end against `pnpm demo` (showcase reveal, timeout, single mode, n=5/25/300/3000, A|B seam pixels, polling fallback, control panel), `pnpm build` + `pnpm start` live mode without a client ID (`signed-out`), and `pnpm verify:server`.
 
 **Verified live (2026-10-31 / 2026-11-01):** Public app + Device Code consent with a real broadcaster, two real channels on one EventSub WebSocket, Helix sends in both chats, OBS 33 browser sources on two simultaneous Twitch streams, crossover / single / timed-out rounds (our two channels, one viewer account).
+
+**Operator-reported v3 HUD recheck (2026-11-01, 16:35–16:43 Chile time, UTC−3):** Both real channels, efaoangssm and efaoangsam, streamed again from OBS 33 with real chats. The operator reports two crossover HYPE rounds, one single-channel GG round and one SO CLOSE round. Their OBS recordings show `WAITING FOR EFAOANGSAM` in full with the blue name, `READY · REVEAL · READY` during the wave, and the larger HUD type. This check is attributed to the operator and their OBS recordings; OpenAI Codex did not observe the live session itself.
 
 **Not verified yet:** real crowds of many distinct people, refresh rotation, reconnect/revocation, Shared Chat, sends and drops under load, a real cloudflared tunnel and the remote room cookie in OBS, OBS frame rate under heavy load.
 
