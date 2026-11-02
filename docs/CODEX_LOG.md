@@ -701,3 +701,102 @@ Checked media paths, byte-identical copies, unchanged unverified lists and all
 changed documentation/media only; no server was started (including port 3000),
 no product behavior changed, and no commit or push was made. Evidence/check logs:
 `test-results/docs-final-pass/`.
+
+## 2026-11-01 - Shared Chat partner discovery with host consent
+
+OpenAI Codex session/thread `01a194b7-1fa1-7df1-9213-da7b4c07bf8b` (CODEX_SESSION_ID and
+CODEX_THREAD_ID), on the existing `feat/shared-chat-pairing` branch. Applied the
+repository twitch-eventsub skill. No live Shared Chat session was available;
+this feature was verified only with fake Helix, a local EventSub WebSocket,
+server fakes and mocked control-panel browser tests. Earlier live Twitch/OBS
+checks do not verify this feature.
+
+A now subscribes to Shared Chat begin/update/end even without B and seeds an
+existing session on connect. Get Users resolves partner IDs. The local Channels
+card offers one-click Use as channel B or a picker for several partners. B never
+changes without consent; stale choices, an existing B and active/revealing rounds
+are refused. Manual entry survives lookup failures. The new local-only
+GET/POST /api/shared-chat API stays outside the frozen overlay protocol. Remote
+room-token requests cannot access it; snapshots and overlay sockets omit discovery.
+An end mid-round shows a notice, keeping B, round ID and deadline intact. The
+pairing reconnect retains known membership so an immediate CALL still sends once
+while the replacement seed is pending. Updated README, DESIGN and TWITCH_NOTES.
+
+Added 12 unit regressions across TwitchService/server: 1/3 partners, seed,
+membership updates, stale lookup/selection rejection, seed/user lookup failure,
+end after failed seed, immediate say-once after consent, end mid-round,
+local-only protection and overlay privacy. Updated A-only EventSub expectations;
+all previous say-once and identity-routing tests remain. Added four browser tests
+for consent, picker, existing B/end notice and manual fallback/running guard.
+The first focused run exposed three old assertions tied to the former B-gated
+subscriptions/seed; those expectations were corrected. A final review found and
+closed the consent/reseed announcement race with its own regression.
+
+Final commands, all exit 0 (`test-results/shared-chat-pairing/final-*.log`):
+`pnpm format`; `pnpm typecheck`; `pnpm test` (272 tests / 17 files);
+`pnpm lint`; `pnpm test:e2e --project=control --max-failures=1` (15 passed / 24.6s);
+`pnpm build`; `pnpm verify:server` (17 PASS checks). Playwright started/stopped
+pnpm demo on 3100. Additional source-demo and compiled signed-out startup smokes
+(no env-file loader or live client ID) returned /control 200 and passed 18
+assertions on owned ports 3197/3198, then stopped their verified PIDs. Both
+suggestion PNGs in test-results/control/shared-chat-{1,3}-partners.png were opened:
+copy, picker, button and manual fields fit the existing Channels card without clipping.
+
+All 31 task-start engine/shared/sim/overlay files are byte-identical, including
+src/engine/ and src/shared/protocol.ts. Historical CODEX_LOG bytes were preserved.
+Owned server PIDs are absent. No port-3000 action, live Twitch send, credential
+inspection/edit, branch switch, commit/push/merge or global configuration change
+was performed. Live Shared Chat discovery/consent, end behavior and announcement
+propagation still need a real session. Cleanup/integrity evidence is under
+`test-results/shared-chat-pairing/`.
+
+## 2026-11-02 - Operator Shared Chat check, source-stream help fix and release
+
+OpenAI Codex session/thread `01a194b7-1fa1-7df1-9213-da7b4c07bf8b`, from CODEX_SESSION_ID
+and CODEX_THREAD_ID. Operator-reported live check (Chile UTC?3), not observed by
+OpenAI Codex: on 2026-11-02 at 10:41, efaoangssm and efaoangsam were live from OBS
+33 on the compiled pairing branch, with A signed in and B unset. A started Stream
+Together, invited B, B accepted and A pressed Start Sharing Chat. Detection appeared
+at 10:53:18; consent at 10:53:23 immediately set B. HYPE quorum 1/1 completed with
+one viewer account typing from both stream pages, one crossover and both wave/end
+cards. Call, waiting invite and summary each appeared exactly once in both chats.
+
+In a 90-second GG round, Shared Chat ended at 10:59:18. The local notice appeared;
+B, round ID and deadline stayed intact. A later B contribution completed the round,
+and the final summary appeared once per independent chat. An earlier SO CLOSE had
+an unsolicited spam account count on A; the intended B message was never sent
+because Twitch's intro dialog covered the operator tool's input. That input issue
+was not a product drop. Any distinct non-ignored chatter can count: the known-bot
+list and channel moderation mitigate this, without content-based spam detection.
+Live scope is our two channels and one viewer account, plus that spam contribution;
+real crowds, multi-partner Shared Chat and the other documented limits remain unverified.
+Evidence is in the operator's capture folder outside the repo: OBS recordings of
+both twitch.tv players, a control-panel Playwright video and redacted chat transcripts.
+
+Fixed the live-found help-copy defect: known shared A+B sessions now say to open
+the unfinished stream's page and type there, explaining source-stream credit.
+Independent chats keep the exact previous chat-hop line. The server reads a local
+sharesSession flag from the existing tracker; overlay protocol and engine are
+unchanged. The 500-character clamp, one-time round latch and one-send targeting
+remain. Added regressions for both ready directions and both chat branches;
+extended length/suffix and fake-transport tests to check one shared invite send
+and session-state changes. The first typecheck found a readonly mutation in a new
+test fixture; construction was corrected. All final checks below passed.
+
+Updated README, SPEC, TWITCH_NOTES and DESIGN to attribute the live evidence and
+record the spam limitation. Copied the two supplied live-shared-chat JPGs unchanged
+into docs/media and displayed the reveal in README with alt text. Opened a reduced
+comparison of both stills. This corrected invite itself was tested locally with
+fakes after the live check; it has not yet been rechecked live.
+
+Final commands: pnpm format (0), pnpm typecheck (0), pnpm test (0; 274 tests / 17
+files), pnpm lint (0), pnpm test:e2e --project=control --max-failures=1 (0; 15
+passed / 22.8s), pnpm build (0), pnpm verify:server (0; 17 PASS checks). Exact logs:
+test-results/shared-chat-ship/final-*.log (ignored, not included in the release).
+Playwright's owned demo used port 3100; server-verifier ports were ephemeral.
+No port-3000 process was started and no message was sent to Twitch by OpenAI Codex.
+All 31 task-start engine/shared/sim/overlay files and historical log bytes were
+preserved. No credential/local capture files were added. At logging time the
+verified branch is prepared for the user-authorized feature commit, fast-forward
+of main and push to origin/main; release hashes and push outcome are reported
+separately after those operations.

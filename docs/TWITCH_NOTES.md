@@ -24,7 +24,7 @@ Documentation nuance: the generic refresh page still says only authorization-cod
 
 `GET https://id.twitch.tv/oauth2/validate`, header `Authorization: OAuth ACCESS_TOKEN` (Bearer is also accepted), returns `{ client_id, login, scopes: string[], user_id, expires_in }` on HTTP 200. Invalid tokens return 401. Validate at startup and **hourly** while maintaining an OAuth session. Confirm client ID, reader/sender user ID and both required scopes; disconnect invalid sessions. Use this `user_id` as the chat-reading condition user and Helix sending identity. [Validate tokens](https://dev.twitch.tv/docs/authentication/validate-tokens/).
 
-## One EventSub WebSocket, two subscriptions
+## One EventSub WebSocket, chat and Shared Chat subscriptions
 
 Connect to `wss://eventsub.wss.twitch.tv/ws`. An optional `keepalive_timeout_seconds` query accepts integer 10–600; use the returned welcome value. This upstream connection receives messages; subscribe over Helix HTTP, **never by sending subscribe JSON into the WS**. Application traffic to Twitch's WS other than protocol Pong closes it. `ws` automatically answers protocol Ping. [Lifecycle](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/).
 
@@ -142,7 +142,7 @@ Use the actual `reconnect_url` **unchanged** immediately. Keep the old socket un
 
 The reason is `payload.subscription.status`: documented reasons are `authorization_revoked`, `user_removed`, `version_removed`. Stop the affected behavior and ask for reauthorization or a supported version through local controls as appropriate. Do not treat revoked consent as a transient network failure. [Revocation](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/#revocation-message). The Get EventSub Subscriptions status list also includes `chat_user_banned` (the condition user was banned from that broadcaster's chat). Implementation: a revocation or fatal subscription failure that concerns only channel B (not `authorization_revoked`, not a 401) drops B and resubscribes channel A on a fresh session, so single mode keeps working; the reason stays visible on the control panel until channels are saved again.
 
-Useful close codes: 4001 inbound application traffic; 4002 failed Pong; 4003 unused socket; 4004 reconnect grace expired; 4005/4006 network timeout/error; 4007 invalid reconnect. Current enabled-subscription limits per client-ID/user-ID tuple: **3 sockets, 300 subscriptions/socket, max total cost 10**. This design needs one socket and two subscriptions; inspect real cost fields rather than assuming. [Close codes and limits](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/#subscription-limits).
+Useful close codes: 4001 inbound application traffic; 4002 failed Pong; 4003 unused socket; 4004 reconnect grace expired; 4005/4006 network timeout/error; 4007 invalid reconnect. Current enabled-subscription limits per client-ID/user-ID tuple: **3 sockets, 300 subscriptions/socket, max total cost 10**. This design uses one socket, one or two chat subscriptions, and three best-effort Shared Chat subscriptions for A; inspect real cost fields rather than assuming. [Close codes and limits](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/#subscription-limits).
 
 ## Chat notification and Shared Chat
 
@@ -185,6 +185,48 @@ Requires `user:write:chat`; `sender_id` must equal the token user; maximum messa
 
 **Shared Chat nuance:** user-token sends propagate to all channels in the shared session and cannot be restricted with `for_source_only`; setting that parameter with a user token returns 400. App-token defaults/extra scopes in the API reference do not apply here. For independent chats send one prompt/summary per channel; for a known shared session avoid duplicate cross-posts by sending once to the group. Implement a session-aware policy or document conservative behavior before live testing. Exclude our sender account from crowd participation. [Shared Chat send behavior](https://dev.twitch.tv/docs/api/reference/#send-chat-message).
 
+## Shared Chat partner discovery (2026-11-01)
+
+In addition to each configured channel's `channel.chat.message` subscription, the client now
+requests `channel.shared_chat.begin`, `channel.shared_chat.update` and `channel.shared_chat.end`
+version 1 for A (`condition.broadcaster_user_id`), including when B is unset. These three Shared
+Chat event types require no additional authorization scope. They remain best effort: failure
+does not stop the chat subscriptions. Get Shared Chat Session
+(`GET /helix/shared_chat/session?broadcaster_id=A`) seeds sessions begun before connect. EventSub
+changes take precedence over a delayed seed. See the official
+[Shared Chat event types](https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channelshared_chatbegin)
+and [Get Shared Chat Session](https://dev.twitch.tv/docs/api/reference/#get-shared-chat-session).
+
+Partner IDs resolve through Get Users; only the local Channels card receives the logins.
+It offers a button for one partner or a picker for several. B changes only after host consent,
+outside a running round; existing B is never replaced by discovery. End notifications keep B
+and the round intact and show a local notice. Failed seeds/lookups fall back to manual entry;
+stale lookup completions cannot restore ended suggestions. The existing session-aware `say`
+behavior remains: one send when A and B share a session, separate sends otherwise. Chat
+identity normalization and per-origin participation are unchanged.
+
+Operator-reported live verification, 2026-11-02 (Chile UTC−3), with our two channels
+efaoangssm/efaoangsam, OBS 33 and one viewer account: detection at 10:53:18, explicit B
+selection at 10:53:23, then HYPE 1/1 on each side with one crossover. Call, waiting invite and
+summary each propagated exactly once into both chats. Ending Shared Chat at 10:59:18 during
+a 90-second GG round preserved B, round ID and deadline; a later B contribution revealed,
+and the summary was sent separately to each independent chat. Evidence is the operator's
+OBS recordings of both twitch.tv players, control-panel Playwright video and redacted chat
+transcripts in their capture folder outside the repo. OpenAI Codex did not observe the live
+session. Multi-partner discovery and failure/reconnect cases remain covered by fakes only.
+
+The live check exposed misleading help copy: Shared Chat displays one combined chat, but
+contributions follow the source stream page. For known shared A+B sessions, the help invite
+now says to open the unfinished stream's page and type there. Independent chats retain the
+chat-hop wording. The server reads a local-only `sharesSession` flag from the existing
+tracker; the same 500-character clamp, one-time latch and say-once send policy apply. This
+copy correction was regression-tested locally after the operator's check, not rechecked live.
+
+An unsolicited spam account counted on A in an earlier SO CLOSE. This is a known limitation:
+any distinct chatter outside the ignored-bot list counts; channel moderation and known-bot
+exclusion are the mitigation. The intended B message in that round was blocked before send
+by Twitch's Shared Chat intro dialog covering the operator tool's input, not by the product.
+
 ## Scopes and limits
 
 | Capability                                               | Required scope for this design |
@@ -198,7 +240,11 @@ Ordinary account chat sending is **20 messages/30 seconds across the user** and 
 
 Honor `Ratelimit-Limit`, `Ratelimit-Remaining`, `Ratelimit-Reset` (Unix epoch seconds). On general 429, wait for reset with bounded jitter; distinguish subscription-count/condition limits that waiting cannot fix. Respect Retry-After if supplied and use bounded fallback/backoff when headers are absent. Log safe status/category only, never auth headers/raw events. [API rate-limit guide](https://dev.twitch.tv/docs/api/guide/#twitch-rate-limits).
 
-Implementation verification still required: real Public app registration/consent/rotation; two channels on one EventSub connection; expiry/revocation UX; synthetic unexpected disconnect and instructed reconnect; Shared Chat copy-first dedupe and announcement behavior; real chat restrictions/dropped sends. Do not claim these passed from the local tests, which use an injected `fetch` and a local `ws` server only.
+Remaining live verification: refresh-token rotation, expiry/revocation and reconnect behavior,
+multi-partner Shared Chat, many distinct real viewers, real chat restrictions/dropped sends
+under load. Earlier operator reports cover Public consent/two-channel operation, and the
+2026-11-02 report above covers two-channel Shared Chat and announcement propagation. Local
+tests use injected fetch and a local WebSocket and do not establish these remaining live cases.
 
 ### Server-only bot filtering and help messages (2026-10-31)
 

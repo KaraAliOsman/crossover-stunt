@@ -142,6 +142,13 @@ const el = {
   channelsSave: byId('channels-save'),
   channelsError: byId('channels-error'),
   channelsStatus: byId('channels-status'),
+  sharedChatPairing: byId('shared-chat-pairing'),
+  sharedChatDetected: byId('shared-chat-detected'),
+  sharedChatPicker: byId('shared-chat-picker'),
+  sharedChatPartner: byId('shared-chat-partner'),
+  sharedChatUse: byId('shared-chat-use'),
+  sharedChatNotice: byId('shared-chat-notice'),
+  sharedChatError: byId('shared-chat-error'),
   // overlays
   urlA: byId('url-A'),
   urlB: byId('url-B'),
@@ -203,6 +210,7 @@ const ui = {
   /** Code returned by POST /api/auth/start, shown until /api/state catches up. */
   authFromStart: null,
   channelsDirty: false,
+  sharedChat: { partners: [], notice: null },
   labelsDirty: false,
   revealPartner: false,
   /**
@@ -441,6 +449,28 @@ async function poll() {
       throw new Error('Unexpected /api/state response. Reload after updating the server.');
     ui.clockOffsetMs = state.snapshot.serverNowMs - Date.now();
     ui.state = state;
+    // Optional discovery failure must not disable manual setup or a running stunt.
+    ui.sharedChat = { partners: [], notice: null };
+    if (!state.demo) {
+      try {
+        const sharedResponse = await fetch('/api/shared-chat', { cache: 'no-store' });
+        const shared = sharedResponse.ok ? await sharedResponse.json() : null;
+        if (isObject(shared) && Array.isArray(shared.partners)) {
+          ui.sharedChat = {
+            partners: shared.partners.filter(
+              (partner) =>
+                isObject(partner) &&
+                typeof partner.userId === 'string' &&
+                typeof partner.login === 'string' &&
+                LOGIN_PATTERN.test(partner.login),
+            ),
+            notice: typeof shared.notice === 'string' ? shared.notice : null,
+          };
+        }
+      } catch {
+        /* Manual entry is the fallback. */
+      }
+    }
     ui.serverDown = false;
     if (!ui.hydrated) hydrate(state);
     el.serverStatus.dataset.state = 'ok';
@@ -503,6 +533,7 @@ function render() {
     renderScoreboard(state);
     renderTwitch(state);
     renderChannels(state);
+    renderSharedChat(state);
     renderOverlayUrls(state);
     renderSimulator(state);
   }
@@ -767,6 +798,46 @@ function renderChannels(state) {
     setValue(el.channelA, isObject(channels.A) ? channels.A.login : '');
     setValue(el.channelB, isObject(channels.B) ? channels.B.login : '');
   }
+}
+
+function renderSharedChat(state) {
+  const partners = state.demo || state.channels.B ? [] : ui.sharedChat.partners;
+  el.sharedChatPairing.hidden = partners.length === 0;
+  setMessage(el.sharedChatNotice, state.demo ? '' : (ui.sharedChat.notice ?? ''));
+  if (!partners.length) return;
+  setText(
+    el.sharedChatDetected,
+    partners.length === 1
+      ? `Shared Chat with ${partners[0].login} detected - Use as channel B`
+      : `Shared Chat with ${partners.length} partners detected - Choose channel B`,
+  );
+  el.sharedChatPicker.hidden = partners.length === 1;
+  const key = JSON.stringify(partners.map((partner) => [partner.userId, partner.login]));
+  if (el.sharedChatPartner.dataset.key !== key) {
+    const selected = el.sharedChatPartner.value;
+    el.sharedChatPartner.replaceChildren(
+      ...partners.map((partner) => {
+        const option = document.createElement('option');
+        option.value = partner.userId;
+        option.textContent = partner.login;
+        return option;
+      }),
+    );
+    if (partners.some((partner) => partner.userId === selected))
+      el.sharedChatPartner.value = selected;
+    el.sharedChatPartner.dataset.key = key;
+  }
+  const running = ['active', 'revealing'].includes(state.snapshot.phase);
+  el.sharedChatUse.disabled = running || ui.serverDown || ui.busy.has('shared-chat');
+  el.sharedChatUse.title = running ? 'Wait for this round to finish.' : '';
+}
+
+function onUseSharedChatPartner() {
+  void runAction('shared-chat', [el.sharedChatUse], el.sharedChatError, async () => {
+    await postJson('/api/shared-chat', { userId: el.sharedChatPartner.value });
+    ui.channelsDirty = false;
+    setMessage(el.channelsStatus, 'Shared Chat partner selected as channel B.');
+  });
 }
 
 function layoutUrl(raw) {
@@ -1455,6 +1526,7 @@ function wire() {
     setMessage(el.labelsStatus, '');
   });
   el.channelsForm.addEventListener('submit', onSaveChannels);
+  el.sharedChatUse.addEventListener('click', onUseSharedChatPartner);
   el.channelsForm.addEventListener('input', () => {
     ui.channelsDirty = true;
   });

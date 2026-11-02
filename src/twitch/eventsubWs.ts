@@ -106,7 +106,7 @@ export interface EventSubOptions {
   readonly channels: { readonly A: string; readonly B: string | null };
   readonly onChat: (chat: NormalizedChatEvent) => void;
   readonly onStatus: (event: EventSubStatusEvent) => void;
-  /** Receives Shared Chat begin/update/end for channel A when both channels are configured. */
+  /** Receives Shared Chat begin/update/end for channel A, including while B is unset. */
   readonly onSharedChat?: (change: SharedChatChange) => void;
   /** Injectable for tests (local `ws` server). Defaults to Twitch's production endpoint. */
   readonly url?: string;
@@ -587,7 +587,7 @@ export function createEventSubClient(options: EventSubOptions): EventSubClient {
     }
     attempt = 0;
     emit({ status: 'connected' });
-    if (hasB && options.onSharedChat) {
+    if (options.onSharedChat) {
       // Best effort (DESIGN §Twitch "when cheap"): failures only mean `say` posts to both chats.
       await Promise.all(
         SHARED_CHAT_SUBSCRIPTION_TYPES.map((type) =>

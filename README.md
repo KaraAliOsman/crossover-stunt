@@ -60,6 +60,10 @@ Operator-supplied Twitch/OBS images and live control-panel capture.
 3. Start the live server with `pnpm build` then `pnpm start`. Use that for live sessions and recordings: `pnpm dev` (watch mode, for development) restarts the server whenever a file under `src/` or `.env` is saved, which loses the running round, channel B and the partner link. Without `TWITCH_CLIENT_ID` the server still starts and the control panel shows status `signed-out` with setup help.
 4. Open [/control](http://127.0.0.1:3000/control) and click **Connect Twitch**. Enter the code shown at the Twitch activation page while signed in as the broadcaster. Do this with the control panel off stream: whoever redeems the code first links their account. The code stays masked until you press **Show**, the activation link already carries it, and **Signed in as** must show the broadcaster before a CALL. The app requests `user:read:chat user:write:chat`. Your channel becomes side **A** automatically. Tokens stay on this PC in `data/tokens.json` (gitignored, owner-only permissions where supported); **Sign out** deletes them.
 5. Enter the partner's login as channel **B** and click **Save channels** (logins are resolved to user IDs through Helix). Choose **Crossover** (A + B) or **Single** (A only). Channels live in memory: after any server restart, enter B again (A reconnects automatically). If Twitch refuses or revokes only channel B (for example, your account is banned in the partner's chat), the app drops B, keeps counting channel A (single mode works) and explains why on the Twitch card.
+   If A is already in Shared Chat and B is unset, the Channels card offers **Use as channel B**.
+   With multiple partners, choose one from the picker. Detection never changes B by itself;
+   pairing waits until no round is running. Manual entry always remains available. If the
+   Shared Chat session ends during a round, the panel shows a notice and keeps B and the round.
    Use **Team label** for TEAM ORANGE / TEAM BLUE (up to 24 characters), then **Save team labels**.
    Labels update overlays immediately and survive channel saves and Twitch reconnects in this server
    session. Clear a label to follow the channel login; a server restart clears the overrides.
@@ -71,9 +75,15 @@ The broadcast package uses matte paper cards, a shared-clock stadium wave and qu
 
 During a CALL, **TYPE ANYTHING IN CHAT** becomes a persistent reminder until your side is ready.
 The lagging side sees **THEY'RE WAITING ON YOU** with the exact number still needed. The ready
-chat gets one invitation to help the other side. Known bots (including Nightbot, StreamElements,
+chat gets one invitation to help the other side. In a known Shared Chat session it asks viewers
+to open the other stream's page and type there: the source stream gets the contribution even
+though both streams display one combined chat. Independent chats retain the chat-hop invitation.
+Known bots (including Nightbot, StreamElements,
 Streamlabs, Fossabot and Moobot) never contribute or raise the baseline; add extra comma-separated
 bot logins with `IGNORED_CHATTERS`. Logins are stripped before engine ingress and never reach overlays.
+Any other distinct chatter can count, including unsolicited spam accounts. The operator's live
+check observed one such account counting on A. The known-bot list and channel moderation are
+the mitigation; this app does not classify message content or determine whether a chatter is legitimate.
 
 After the shared wave, **UNITE** brings the whole picture into a central band on each stream.
 Titles report people across **2 STREAMS** and the crossover count. Cards retire about **18 seconds
@@ -141,7 +151,24 @@ pnpm only allows esbuild's install script (`pnpm-workspace.yaml`). No global ins
   - Captures go to `test-results/e2e/`, `test-results/overlay/` and `test-results/control/` (ignored).
 - **Verified live (2026-10-31 and 2026-11-01, Windows 11, OBS 33):** a Public app with the Device Code flow and a real broadcaster account; stored tokens reused after a server restart; **two real channels on one EventSub WebSocket** (efaoangssm + efaoangsam); Helix bot messages in both chats; OBS browser sources rendering overlays A and B on two simultaneous Twitch streams (720p30, 0 dropped stream frames), watched in the twitch.tv players; crossover, single-channel and timed-out (SO CLOSE) rounds; the roar captured in the OBS recordings. Evidence: the demo video (twitch.tv players and both chats on screen). The live tests used our two channels and one viewer account (one person per side).
 - **Operator-reported v3 HUD recheck (2026-11-01, 16:35–16:43 Chile time, UTC−3):** efaoangssm and efaoangsam streamed again from OBS 33 with real chats: two crossover HYPE rounds, one single-channel GG round and one SO CLOSE round. The operator reports OBS recordings showing `WAITING FOR EFAOANGSAM` in full with the blue name, `READY · REVEAL · READY` during the wave, and the larger HUD type. This is operator-reported evidence backed by OBS recordings; OpenAI Codex did not observe the live check itself.
-- **Not verified yet:** real crowds of many distinct people, refresh-token rotation, EventSub reconnect/revocation, Shared Chat, dropped messages, a real cloudflared tunnel and the partner's room cookie inside OBS, and OBS frame rate under heavy load. Per-phase Chromium frame-pacing measurements for this redesign are recorded in CODEX_LOG; they are regression signals, not proof of OBS performance or a sustained 60 fps claim.
+- **Not verified yet:** real crowds of many distinct people, refresh-token rotation, EventSub reconnect/revocation, multi-partner Shared Chat sessions, dropped messages, a real cloudflared tunnel and the partner's room cookie inside OBS, and OBS frame rate under heavy load. Per-phase Chromium frame-pacing measurements for this redesign are recorded in CODEX_LOG; they are regression signals, not proof of OBS performance or a sustained 60 fps claim.
+
+**Operator-reported Shared Chat check (2026-11-02, Chile time UTC−3):** efaoangssm and
+efaoangsam were live from OBS 33 at 10:41. The Channels card detected B at 10:53:18 and the
+operator accepted it at 10:53:23. A HYPE round reached 1/1 on each side with one viewer account
+and one crossover; call, waiting invite and summary each appeared once in both chats. Ending
+Shared Chat at 10:59:18 during a 90-second GG round kept B, the round ID and deadline intact;
+typing from B then completed it, with separate summaries in the now independent chats. This
+is the operator's report, backed by OBS recordings of both twitch.tv players, a control-panel
+Playwright video and redacted transcripts in the operator's capture folder outside this repo.
+OpenAI Codex did not observe the live session. The corrected stream-page invitation below was
+regression-tested locally after that check. The multi-partner picker remains fake-tested only.
+Suggestions use the local-only `/api/shared-chat` control API; overlays and room-token remote
+clients cannot read them.
+
+![Operator-supplied recording still of both Twitch players revealing HYPE in Shared Chat.](docs/media/live-shared-chat-reveal.jpg)
+
+[Shared Chat waiting-state recording still](docs/media/live-shared-chat-waiting.jpg).
 
 [docs/CODEX_LOG.md](docs/CODEX_LOG.md) records the Codex sessions logged so far and the evidence actually gathered in them. Its first entry is the repository scaffold session: its "Deliberately unfinished" list describes the state at the end of that session, not the current one (current status and verification are in this section and in [docs/SPEC.md](docs/SPEC.md)).
 

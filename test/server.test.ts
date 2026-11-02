@@ -188,6 +188,7 @@ function fakeTwitch() {
     userCode: null,
     verificationUri: null,
     error: null,
+    sharedChat: { partners: [], endedRevision: 0, sharesSession: false },
     channels: {
       A: { login: 'alpha', displayName: 'Alpha', userId: '100' },
       B: { login: 'beta', displayName: 'Beta', userId: '200' },
@@ -204,6 +205,13 @@ function fakeTwitch() {
     })),
     signOut: vi.fn(async () => undefined),
     setChannels: vi.fn(async () => undefined),
+    useSharedChatPartner: vi.fn(async (userId: string) => {
+      const partner = state.sharedChat.partners.find((user) => user.userId === userId);
+      if (state.channels.B || !partner)
+        throw new ChannelLookupError('selection-changed', 'Selection changed');
+      state = { ...state, channels: { ...state.channels, B: partner } };
+      captured?.onStateChange();
+    }),
     say: vi.fn(async (sides: readonly ('A' | 'B')[], _message: string) =>
       Object.fromEntries(sides.map((side) => [side, { ok: true, reason: null }])),
     ),
@@ -225,8 +233,106 @@ function fakeTwitch() {
     state = { ...state, status };
     captured?.onStateChange?.();
   };
-  return { service, factory, chat, setStatus };
+  const patch = (update: Partial<TwitchServiceState>) => {
+    state = { ...state, ...update };
+    captured?.onStateChange();
+  };
+  return { service, factory, chat, setStatus, patch };
 }
+
+describe('Shared Chat partner consent (local controls only)', () => {
+  const partner = { login: 'shared_partner', displayName: 'SharedPartner', userId: 'shared-id' };
+  it('suggests only with B unset and applies the explicit selection', async () => {
+    const twitch = fakeTwitch();
+    const { port } = await start({
+      demo: false,
+      twitchClientId: 'fake-client',
+      createTwitch: twitch.factory,
+    });
+    twitch.patch({
+      channels: { A: twitch.service.getState().channels.A, B: null },
+      sharedChat: { partners: [partner], endedRevision: 0, sharesSession: false },
+    });
+    expect(await getJson(port, '/api/shared-chat')).toEqual({ partners: [partner], notice: null });
+    expect(twitch.service.useSharedChatPartner).not.toHaveBeenCalled();
+    expect((await post(port, '/api/shared-chat', { userId: partner.userId })).status).toBe(200);
+    expect(twitch.service.getState().channels.B).toEqual(partner);
+    expect(await getJson(port, '/api/shared-chat')).toEqual({ partners: [], notice: null });
+    expect((await post(port, '/api/shared-chat', { userId: partner.userId })).status).toBe(409);
+    expect((await post(port, '/api/shared-chat', { login: partner.login })).status).toBe(400);
+  });
+
+  it('notices an end mid-round without dropping B, stopping or resetting the round', async () => {
+    const twitch = fakeTwitch();
+    const { port } = await start({
+      demo: false,
+      twitchClientId: 'fake-client',
+      createTwitch: twitch.factory,
+    });
+    expect((await post(port, '/api/call', crossoverCall(3))).status).toBe(202);
+    const before = (await getJson<SnapshotResponse>(port, '/api/snapshot')).snapshot;
+    const b = twitch.service.getState().channels.B;
+    twitch.patch({ sharedChat: { partners: [], endedRevision: 1, sharesSession: false } });
+    const after = (await getJson<SnapshotResponse>(port, '/api/snapshot')).snapshot;
+    expect(after).toMatchObject({
+      roundId: before.roundId,
+      phase: 'active',
+      deadlineAtMs: before.deadlineAtMs,
+    });
+    expect(twitch.service.getState().channels.B).toEqual(b);
+    expect(await getJson(port, '/api/shared-chat')).toMatchObject({
+      notice: expect.stringContaining('round keeps running'),
+    });
+    expect((await post(port, '/api/shared-chat', { userId: partner.userId })).status).toBe(409);
+    await post(port, '/api/reset', {});
+    expect(await getJson(port, '/api/shared-chat')).toMatchObject({ notice: null });
+  });
+
+  it('protects discovery/selection and never sends partner suggestions to overlay transports', async () => {
+    const twitch = fakeTwitch();
+    const { port } = await start({
+      demo: false,
+      twitchClientId: 'fake-client',
+      createTwitch: twitch.factory,
+    });
+    twitch.patch({
+      channels: { A: twitch.service.getState().channels.A, B: null },
+      sharedChat: { partners: [partner], endedRevision: 0, sharesSession: false },
+    });
+    for (const suffix of ['', `?room=${ROOM}`]) {
+      expect((await raw(port, `/api/shared-chat${suffix}`, { headers: PROXY })).status).toBe(403);
+      expect(
+        (
+          await raw(port, `/api/shared-chat${suffix}`, {
+            method: 'POST',
+            headers: { ...PROXY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: partner.userId }),
+          })
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await raw(port, '/api/shared-chat', {
+          method: 'POST',
+          headers: { Origin: 'https://foreign.example', 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+      ).status,
+    ).toBe(403);
+    expect((await raw(port, '/api/shared-chat', { method: 'POST', body: '{}' })).status).toBe(415);
+    expect(JSON.stringify(await getJson(port, '/api/state'))).not.toContain(partner.userId);
+    expect(JSON.stringify(await getJson(port, '/api/snapshot'))).not.toMatch(
+      /shared_partner|shared-id|partners|sharedChat/,
+    );
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?side=B&room=${ROOM}`, { headers: PROXY });
+    sockets.push(ws);
+    const messages: string[] = [];
+    ws.on('message', (data) => messages.push(data.toString()));
+    await vi.waitFor(() => expect(messages.length).toBeGreaterThanOrEqual(3));
+    expect(messages.join('')).not.toMatch(/shared_partner|shared-id|partners|sharedChat/);
+  });
+});
 
 describe('static files', () => {
   it('serves page aliases and allowlisted assets with the security headers', async () => {
@@ -821,33 +927,45 @@ describe('team label boundary and persistence', () => {
   });
 });
 
-it('sends one help call per live round through the existing Twitch queue', async () => {
-  const twitch = fakeTwitch();
-  const { app, port } = await start({
-    demo: false,
-    twitchClientId: 'test-client',
-    createTwitch: twitch.factory,
-  });
-  const helpCalls = () =>
-    twitch.service.say.mock.calls.filter(([, message]) => message.includes(' is done! '));
-  for (let round = 0; round < 2; round += 1) {
-    expect((await post(port, '/api/call', crossoverCall(3))).status).toBe(202);
-    if (round > 0)
-      await vi.waitFor(() =>
-        expect(twitch.service.say).toHaveBeenLastCalledWith(
-          ['A', 'B'],
-          expect.stringMatching(/\(take 2\)$/),
-        ),
+it.each([false, true])(
+  'sends one help call per live round with sharedChat=%s through the existing Twitch queue',
+  async (sharesSession) => {
+    const twitch = fakeTwitch();
+    const { app, port } = await start({
+      demo: false,
+      twitchClientId: 'test-client',
+      createTwitch: twitch.factory,
+    });
+    const helpCalls = () =>
+      twitch.service.say.mock.calls.filter(([, message]) => message.includes(' is done! '));
+    twitch.patch({ sharedChat: { partners: [], endedRevision: 0, sharesSession } });
+    for (let round = 0; round < 2; round += 1) {
+      expect((await post(port, '/api/call', crossoverCall(3))).status).toBe(202);
+      if (round > 0)
+        await vi.waitFor(() =>
+          expect(twitch.service.say).toHaveBeenLastCalledWith(
+            ['A', 'B'],
+            expect.stringMatching(/\(take 2\)$/),
+          ),
+        );
+      for (let i = 0; i < 3; i += 1) twitch.chat('A', `a-${i}`);
+      await vi.waitFor(() => expect(helpCalls()).toHaveLength(round + 1));
+      twitch.chat('A', 'extra');
+      twitch.chat('B', 'one');
+      app.runtime.tick();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(helpCalls()).toHaveLength(round + 1);
+      expect(helpCalls().at(-1)?.[0]).toEqual(['A']);
+      const message = helpCalls().at(-1)![1];
+      expect(message).toContain(
+        sharesSession
+          ? "Shared Chat counts the stream you type from: open Beta's stream and type there"
+          : "Hop into Beta's chat and type anything",
       );
-    for (let i = 0; i < 3; i += 1) twitch.chat('A', `a-${i}`);
-    await vi.waitFor(() => expect(helpCalls()).toHaveLength(round + 1));
-    twitch.chat('A', 'extra');
-    twitch.chat('B', 'one');
-    app.runtime.tick();
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(helpCalls()).toHaveLength(round + 1);
-    expect(helpCalls().at(-1)?.[0]).toEqual(['A']);
-    await post(port, '/api/reset', {});
-  }
-  expect((await getJson<SnapshotResponse>(port, '/api/snapshot')).snapshot.phase).toBe('idle');
-});
+      expect(message).not.toContain(sharesSession ? 'Hop into' : 'Shared Chat counts');
+      expect(message.length).toBeLessThanOrEqual(500);
+      await post(port, '/api/reset', {});
+    }
+    expect((await getJson<SnapshotResponse>(port, '/api/snapshot')).snapshot.phase).toBe('idle');
+  },
+);

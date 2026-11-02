@@ -324,7 +324,7 @@ describe('EventSub WebSocket client', () => {
         transport: { method: 'websocket', session_id: 'session-1' },
       })),
     );
-    // Shared Chat tracking (A only, both channels configured) is requested after chat.
+    // Shared Chat tracking for A is requested after chat subscriptions.
     await waitFor(() => t.subscriptionPosts().length === 5);
     expect(
       t
@@ -344,13 +344,20 @@ describe('EventSub WebSocket client', () => {
     expect(t.statuses.map((event) => event.status)).toEqual(['connecting', 'connected']);
   });
 
-  it('subscribes only channel A in single-channel mode', async () => {
+  it('subscribes A chat and Shared Chat discovery even when B is unset', async () => {
     const t = await setup({ channels: { A: CHANNELS.A, B: null } });
     (await t.stub.connection(0)).socket.send(welcome('session-1'));
     await waitFor(() => t.connectedCount() === 1);
-    await pause(30);
+    await waitFor(() => t.subscriptionPosts().length === 4);
     expect(t.chatPosts()).toHaveLength(1);
-    expect(t.subscriptionPosts()).toHaveLength(1);
+    expect(t.subscriptionPosts()).toHaveLength(4);
+    const conn = await t.stub.connection(0);
+    conn.socket.send(sharedChatEvent('channel.shared_chat.begin', [CHANNELS.A, CHANNELS.B]));
+    await waitFor(() => t.shared.length === 1);
+    expect(t.shared[0]).toMatchObject({
+      kind: 'session',
+      participantIds: [CHANNELS.A, CHANNELS.B],
+    });
   });
 
   it('delivers a validated, content-free normalized event and dedupes envelopes', async () => {

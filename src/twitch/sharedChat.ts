@@ -1,5 +1,5 @@
 /**
- * Shared Chat session tracking, used only to avoid posting the same announcement twice: user-token
+ * Shared Chat session tracking for local partner suggestions and announcement deduplication: user-token
  * sends propagate to every channel of a Shared Chat session, so when A and B share one, `say` sends
  * once. Identity routing for chat messages lives in normalize.ts and does not depend on this.
  *
@@ -85,6 +85,8 @@ export interface SharedChatTracker {
   clear(): void;
   /** True when both broadcasters are known to be in the same active Shared Chat session. */
   sharesSession(a: string, b: string): boolean;
+  /** Current broadcaster membership, for local-only partner discovery. */
+  participants(broadcasterId: string): readonly string[];
 }
 
 /** Small bound: a channel is in at most one session; this only guards against junk input. */
@@ -124,6 +126,12 @@ export function createSharedChatTracker(): SharedChatTracker {
         if (members.has(a) && members.has(b)) return true;
       }
       return false;
+    },
+    participants(broadcasterId) {
+      for (const members of sessions.values()) {
+        if (members.has(broadcasterId)) return [...members];
+      }
+      return [];
     },
   };
 }

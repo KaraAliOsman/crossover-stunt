@@ -19,6 +19,10 @@ const CLIENT_ID = 'client-id';
 const TS = '2026-10-31T20:00:00Z';
 const SELF = { id: 'uid-a', login: 'streamer_a', display_name: 'Streamer_A' };
 const PARTNER = { id: 'uid-b', login: 'partner_b', display_name: 'PartnerB' };
+const MORE_PARTNERS = [
+  { id: 'uid-c', login: 'partner_c', display_name: 'PartnerC' },
+  { id: 'uid-d', login: 'partner_d', display_name: 'PartnerD' },
+];
 
 interface RecordedRequest {
   readonly method: string;
@@ -66,6 +70,9 @@ async function fakeTwitch(initialAccessToken = 'access-1') {
     validAccessToken: initialAccessToken,
     scopes: [...REQUIRED_SCOPES] as string[],
     sharedSession: null as null | readonly string[],
+    sharedStatus: 200,
+    usersStatus: 200,
+    usersResponseGate: null as Promise<void> | null,
     sharedResponseGate: null as Promise<void> | null,
     deviceResponseGate: null as Promise<void> | null,
     deviceTokenGate: null as Promise<void> | null,
@@ -86,6 +93,7 @@ async function fakeTwitch(initialAccessToken = 'access-1') {
     calls.push(request);
     const response = route(request);
     if (request.url.pathname === '/helix/shared_chat/session') await state.sharedResponseGate;
+    if (request.url.pathname === '/helix/users') await state.usersResponseGate;
     if (request.url.pathname === '/oauth2/device') await state.deviceResponseGate;
     if (request.url.pathname === '/oauth2/token') await state.deviceTokenGate;
     if (request.url.pathname === '/oauth2/validate') await state.validateResponseGate;
@@ -152,9 +160,10 @@ async function fakeTwitch(initialAccessToken = 'access-1') {
     }
     switch (`${request.method} ${url.pathname}`) {
       case 'GET /helix/users': {
+        if (state.usersStatus !== 200) return json(state.usersStatus, {});
         const ids = url.searchParams.getAll('id');
         const logins = url.searchParams.getAll('login');
-        const data = [SELF, PARTNER].filter(
+        const data = [SELF, PARTNER, ...MORE_PARTNERS].filter(
           (user) => ids.includes(user.id) || logins.includes(user.login),
         );
         return json(200, { data });
@@ -169,7 +178,7 @@ async function fakeTwitch(initialAccessToken = 'access-1') {
           max_total_cost: 10,
         });
       case 'GET /helix/shared_chat/session':
-        return json(200, {
+        return json(state.sharedStatus, {
           data: state.sharedSession
             ? [
                 {
@@ -313,6 +322,7 @@ describe('TwitchService', () => {
       userCode: null,
       verificationUri: null,
       error: null,
+      sharedChat: { partners: [], endedRevision: 0, sharesSession: false },
       channels: {
         A: { login: SELF.login, displayName: SELF.display_name, userId: SELF.id },
         B: null,
@@ -333,6 +343,14 @@ describe('TwitchService', () => {
         condition: { broadcaster_user_id: SELF.id, user_id: SELF.id },
         transport: { method: 'websocket', session_id: 'session-1' },
       },
+      ...['channel.shared_chat.begin', 'channel.shared_chat.update', 'channel.shared_chat.end'].map(
+        (type) => ({
+          type,
+          version: '1',
+          condition: { broadcaster_user_id: SELF.id },
+          transport: { method: 'websocket', session_id: 'session-1' },
+        }),
+      ),
     ]);
   });
 
@@ -683,8 +701,10 @@ describe('TwitchService', () => {
     expect(state.error).toMatch(/channel A keeps counting/);
     const session3 = t.twitch
       .posts('/helix/eventsub/subscriptions')
-      .map((call) => JSON.parse(call.body) as { transport: { session_id: string } })
-      .filter((body) => body.transport.session_id === 'session-3');
+      .map((call) => JSON.parse(call.body) as { type: string; transport: { session_id: string } })
+      .filter(
+        (body) => body.transport.session_id === 'session-3' && body.type === 'channel.chat.message',
+      );
     expect(session3).toEqual([
       expect.objectContaining({ condition: { broadcaster_user_id: SELF.id, user_id: SELF.id } }),
     ]);
@@ -700,6 +720,178 @@ describe('TwitchService', () => {
     await t.service.setChannels({ b: null });
     expect(t.service.getState().error).toBeNull();
   });
+
+  for (const count of [1, 3]) {
+    it(`discovers ${count} Shared Chat partner(s) without B, and requires explicit consent`, async () => {
+      const t = await setup();
+      await t.service.start();
+      await waitFor(() => t.service.getState().status === 'connected');
+      // Finish the initial empty seed before the EventSub begin.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const members = [PARTNER, ...MORE_PARTNERS].slice(0, count);
+      t.twitch.state.sharedSession = [SELF.id, ...members.map((user) => user.id)];
+      const changes = t.stateChanges();
+      t.twitch.sockets[0]!.send(
+        notification(
+          'channel.shared_chat.begin',
+          {
+            session_id: 'shared-1',
+            broadcaster_user_id: SELF.id,
+            participants: [
+              { broadcaster_user_id: SELF.id },
+              ...members.map((user) => ({ broadcaster_user_id: user.id })),
+            ],
+          },
+          `begin-${count}`,
+        ),
+      );
+      await waitFor(() => t.service.getState().sharedChat.partners.length === count);
+      expect(t.service.getState().channels.B).toBeNull();
+      expect(t.stateChanges()).toBeGreaterThan(changes);
+      expect(t.service.getState().sharedChat.partners.map((user) => user.login)).toEqual(
+        members.map((user) => user.login),
+      );
+      expect(
+        t.twitch.calls.some(
+          (call) =>
+            call.url.pathname === '/helix/users' &&
+            call.url.searchParams.getAll('id').includes(PARTNER.id),
+        ),
+      ).toBe(true);
+      await t.service.useSharedChatPartner(members.at(-1)!.id);
+      await waitFor(() => t.service.getState().status === 'connected');
+      expect(t.service.getState().channels.B?.userId).toBe(members.at(-1)!.id);
+      expect(t.service.getState().sharedChat.partners).toEqual([]);
+      await expect(t.service.useSharedChatPartner(PARTNER.id)).rejects.toMatchObject({
+        code: 'selection-changed',
+      });
+    });
+  }
+
+  it('keeps say-once immediately after consent while the replacement seed is delayed', async () => {
+    const t = await setup();
+    t.twitch.state.sharedSession = [SELF.id, PARTNER.id];
+    await t.service.start();
+    await waitFor(() => t.service.getState().sharedChat.partners.length === 1);
+    const seed = gate();
+    t.twitch.state.sharedResponseGate = seed.promise;
+    try {
+      await t.service.useSharedChatPartner(PARTNER.id);
+      await waitFor(
+        () => t.twitch.sockets.length === 2 && t.service.getState().status === 'connected',
+      );
+      await t.service.say(['A', 'B'], 'STUNT! Paired shared chat');
+      expect(t.twitch.posts('/helix/chat/messages')).toHaveLength(1);
+    } finally {
+      seed.resolve();
+    }
+  });
+
+  it('seeds partner discovery with B unset and clears suggestions on end', async () => {
+    const t = await setup();
+    t.twitch.state.sharedSession = [SELF.id, PARTNER.id];
+    await t.service.start();
+    await waitFor(() => t.service.getState().sharedChat.partners.length === 1);
+    t.twitch.sockets[0]!.send(
+      notification('channel.shared_chat.end', { session_id: 'shared-1' }, 'end-discovery'),
+    );
+    await waitFor(() => t.service.getState().sharedChat.endedRevision === 1);
+    expect(t.service.getState().sharedChat.partners).toEqual([]);
+    await expect(t.service.useSharedChatPartner(PARTNER.id)).rejects.toMatchObject({
+      code: 'selection-changed',
+    });
+  });
+
+  it('updates the partner picker and refuses a removed participant', async () => {
+    const t = await setup();
+    t.twitch.state.sharedSession = [SELF.id, PARTNER.id];
+    await t.service.start();
+    await waitFor(() => t.service.getState().sharedChat.partners.length === 1);
+    t.twitch.sockets[0]!.send(
+      notification(
+        'channel.shared_chat.update',
+        {
+          session_id: 'shared-1',
+          participants: [SELF, ...MORE_PARTNERS].map((user) => ({ broadcaster_user_id: user.id })),
+        },
+        'update-partners',
+      ),
+    );
+    await waitFor(() => t.service.getState().sharedChat.partners.length === 2);
+    expect(t.service.getState().sharedChat.partners.map((user) => user.userId)).toEqual(
+      MORE_PARTNERS.map((user) => user.id),
+    );
+    await expect(t.service.useSharedChatPartner(PARTNER.id)).rejects.toMatchObject({
+      code: 'selection-changed',
+    });
+    expect(t.service.getState().channels.B).toBeNull();
+  });
+
+  it('reports an explicit end after a failed seed and retains manually chosen B', async () => {
+    const t = await setup();
+    t.twitch.state.sharedStatus = 503;
+    await t.service.start();
+    await waitFor(() => t.service.getState().status === 'connected');
+    await t.service.setChannels({ b: PARTNER.login });
+    await waitFor(
+      () => t.twitch.sockets.length === 2 && t.service.getState().status === 'connected',
+    );
+    t.twitch.sockets[1]!.send(
+      notification(
+        'channel.shared_chat.end',
+        { session_id: 'shared-unknown' },
+        'end-without-begin',
+      ),
+    );
+    await waitFor(() => t.service.getState().sharedChat.endedRevision === 1);
+    expect(t.service.getState().channels.B?.userId).toBe(PARTNER.id);
+  });
+
+  it('ignores a late user lookup after Shared Chat ends', async () => {
+    const t = await setup();
+    await t.service.start();
+    await waitFor(() => t.service.getState().status === 'connected');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const lookup = gate();
+    t.twitch.state.usersResponseGate = lookup.promise;
+    t.twitch.sockets[0]!.send(
+      notification(
+        'channel.shared_chat.begin',
+        {
+          session_id: 'shared-1',
+          participants: [{ broadcaster_user_id: SELF.id }, { broadcaster_user_id: PARTNER.id }],
+        },
+        'begin-delayed-users',
+      ),
+    );
+    await waitFor(() =>
+      t.twitch.calls.some((call) => call.url.searchParams.getAll('id').includes(PARTNER.id)),
+    );
+    t.twitch.sockets[0]!.send(
+      notification('channel.shared_chat.end', { session_id: 'shared-1' }, 'end-delayed-users'),
+    );
+    await waitFor(() => t.service.getState().sharedChat.endedRevision === 1);
+    lookup.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(t.service.getState().sharedChat.partners).toEqual([]);
+    expect(t.service.getState().channels.B).toBeNull();
+  });
+
+  for (const failedLookup of ['seed', 'users']) {
+    it(`keeps manual entry available when Shared Chat ${failedLookup} fails`, async () => {
+      const t = await setup();
+      t.twitch.state.sharedSession = [SELF.id, PARTNER.id];
+      if (failedLookup === 'seed') t.twitch.state.sharedStatus = 503;
+      else t.twitch.state.usersStatus = 503;
+      await t.service.start();
+      await waitFor(() => t.service.getState().status === 'connected');
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(t.service.getState()).toMatchObject({ error: null, sharedChat: { partners: [] } });
+      t.twitch.state.usersStatus = 200;
+      await t.service.setChannels({ b: PARTNER.login });
+      expect(t.service.getState().channels.B?.login).toBe(PARTNER.login);
+    });
+  }
 
   it('says once per Shared Chat session and once per channel otherwise', async () => {
     const t = await setup();
@@ -726,6 +918,7 @@ describe('TwitchService', () => {
       sender_id: SELF.id,
       message: 'STUNT! Type anything in chat — 45s.',
     });
+    expect(t.service.getState().sharedChat.sharesSession).toBe(false);
 
     const socket = t.twitch.sockets[1];
     socket?.send(
@@ -741,13 +934,21 @@ describe('TwitchService', () => {
       ),
     );
     await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(t.service.getState().sharedChat.partners).toEqual([]);
+    expect(t.service.getState().sharedChat.sharesSession).toBe(true);
+    await t.service.say(
+      ['A'],
+      "Streamer_A is done! PartnerB still needs 1 more. Shared Chat counts the stream you type from: open PartnerB's stream and type there (you count for both sides).",
+    );
+    expect(chatPosts()).toHaveLength(3);
+    expect(chatPosts()[2]?.broadcaster_id).toBe(SELF.id);
     await expect(t.service.say(['A', 'B'], '12 people made this')).resolves.toEqual({
       A: { ok: true, reason: null },
       B: { ok: true, reason: null },
     });
     expect(
       chatPosts()
-        .slice(2)
+        .slice(3)
         .map((body) => body.broadcaster_id),
     ).toEqual([SELF.id]);
 
@@ -760,9 +961,12 @@ describe('TwitchService', () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 30));
     await t.service.say(['A', 'B'], 'SO CLOSE');
+    expect(t.service.getState().channels.B?.userId).toBe(PARTNER.id);
+    expect(t.service.getState().sharedChat.endedRevision).toBe(1);
+    expect(t.service.getState().sharedChat.sharesSession).toBe(false);
     expect(
       chatPosts()
-        .slice(3)
+        .slice(4)
         .map((body) => body.broadcaster_id),
     ).toEqual([SELF.id, PARTNER.id]);
   });
@@ -791,8 +995,10 @@ describe('TwitchService', () => {
     });
     t.twitch.state.sharedSession = [SELF.id, PARTNER.id];
     await t.service.setChannels({ b: PARTNER.login });
-    await waitFor(() =>
-      t.twitch.calls.some((call) => call.url.pathname === '/helix/shared_chat/session'),
+    await waitFor(
+      () =>
+        t.twitch.calls.filter((call) => call.url.pathname === '/helix/shared_chat/session')
+          .length >= 2,
     );
     t.twitch.sockets[1]?.send(
       notification(

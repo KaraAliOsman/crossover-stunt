@@ -432,6 +432,19 @@
               >
             </div>
           </fieldset>
+          <div id="shared-chat-pairing" class="channels-form" hidden>
+            <p id="shared-chat-detected" class="hint" role="status"></p>
+            <div id="shared-chat-picker" class="field" hidden>
+              <label for="shared-chat-partner">Shared Chat partner</label>
+              <select id="shared-chat-partner"></select>
+            </div>
+            <button type="button" class="btn" id="shared-chat-use">Use as channel B</button>
+            <p class="hint">
+              Your choice only applies after you click. Manual entry remains available.
+            </p>
+          </div>
+          <p id="shared-chat-notice" class="msg" role="status" hidden></p>
+          <p id="shared-chat-error" class="msg msg-error" role="alert" hidden></p>
           <form id="channels-form" class="channels-form" novalidate>
             <div class="field">
               <label for="channel-a"

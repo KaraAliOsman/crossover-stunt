@@ -12,6 +12,14 @@ Single-channel mode is **Card Stunt**: the same engine renders the whole image o
 
 Never show chat text, usernames, chatter IDs, fragments or emotes. Artwork text entered by the host is separate from chat content. Use owned/licensed images and local assets; do not introduce third-party logos or unlicensed music.
 
+Known limitation: any distinct chatter outside the ignored-bot list can contribute, including
+an unsolicited spam account. The operator observed one counting on A during the 2026-11-02
+live Shared Chat check. The known-bot list and channel moderation mitigate this; there is no
+message-content spam classification. In Shared Chat, contributions follow the source stream
+page even though both streams show one combined chat. The ready-side invitation therefore
+directs viewers to open the other stream's page and type there when A and B are known to
+share a session; independent chats retain their existing invitation.
+
 ## Host journey
 
 1. Open `/control`, authorize the public Twitch client, choose single/crossover, and identify channel B if needed. Resolve channel names to immutable user IDs server-side.
@@ -71,7 +79,23 @@ Verified locally (Windows 11, Node 24, headless Chromium): Vitest suites (engine
 
 **Operator-reported v3 HUD recheck (2026-11-01, 16:35–16:43 Chile time, UTC−3):** Both real channels, efaoangssm and efaoangsam, streamed again from OBS 33 with real chats. The operator reports two crossover HYPE rounds, one single-channel GG round and one SO CLOSE round. Their OBS recordings show `WAITING FOR EFAOANGSAM` in full with the blue name, `READY · REVEAL · READY` during the wave, and the larger HUD type. This check is attributed to the operator and their OBS recordings; OpenAI Codex did not observe the live session itself.
 
-**Not verified yet:** real crowds of many distinct people, refresh rotation, reconnect/revocation, Shared Chat, sends and drops under load, a real cloudflared tunnel and the remote room cookie in OBS, OBS frame rate under heavy load.
+**Operator-reported Shared Chat check (2026-11-02, Chile time UTC−3):** efaoangssm (A) and
+efaoangsam (B) were live from OBS 33 at 10:41, using the compiled pairing branch with A signed
+in and B unset. After Stream Together / Start Sharing Chat, discovery appeared at 10:53:18;
+host consent at 10:53:23 selected B. A HYPE round completed A 1/1, B 1/1 with one viewer
+account and one crossover, revealing on both broadcasts. Each call/help/summary appeared once
+in the shared chats. In a 90-second GG round, ending Shared Chat at 10:59:18 showed the local
+notice and preserved B, round ID and deadline; a subsequent contribution on B completed the
+round and the final summary appeared once per independent chat. An earlier SO CLOSE included
+one unsolicited spam account counted on A; the intended B message was not sent because a
+Twitch intro dialog blocked the operator tool's input, not because the product dropped it.
+Evidence is operator-reported: OBS recordings of both twitch.tv players, a control-panel
+Playwright video and redacted transcripts, outside the repo in the operator's capture folder.
+OpenAI Codex did not observe this session. The resulting invitation-copy fix has local fake
+regressions; it was not part of that live check. Live scope is our two channels and one viewer
+account, plus that unsolicited spam contribution.
+
+**Not verified yet:** real crowds of many distinct people, refresh rotation, reconnect/revocation, multi-partner Shared Chat sessions, sends and drops under load, a real cloudflared tunnel and the remote room cookie in OBS, OBS frame rate under heavy load.
 
 The entrypoint binds loopback only. The simulator generates local virtual IDs; it never impersonates Twitch users or sends messages upstream.
 

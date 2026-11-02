@@ -10,7 +10,8 @@ import { isRecord, readDataArray, readString } from './json.js';
 /** Twitch logins: 1–25 of a–z, 0–9 and underscore (case-insensitive, stored lowercase). */
 const LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
 
-export type ChannelLookupFailure = 'invalid-login' | 'not-found' | 'not-signed-in' | 'failed';
+export type ChannelLookupFailure =
+  'invalid-login' | 'not-found' | 'not-signed-in' | 'selection-changed' | 'failed';
 
 /** Channel selection could not be applied. The message is safe to show on local controls. */
 export class ChannelLookupError extends Error {

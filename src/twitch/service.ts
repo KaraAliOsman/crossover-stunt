@@ -22,7 +22,11 @@ import { createHelixClient } from './helix.js';
 import { createChatQueue, sendChatMessage, type ChatOutcome } from './helixChat.js';
 import { ChannelLookupError, getUsers, normalizeLogin } from './helixUsers.js';
 import { TwitchHttpError, TwitchNetworkError, defaultSleep, type SleepFn } from './http.js';
-import { createSharedChatTracker, fetchSharedChatSession } from './sharedChat.js';
+import {
+  createSharedChatTracker,
+  fetchSharedChatSession,
+  type SharedChatChange,
+} from './sharedChat.js';
 import { ReauthorizationRequiredError, createTokenManager } from './tokenStore.js';
 
 export { ChannelLookupError, normalizeLogin } from './helixUsers.js';
@@ -53,6 +57,14 @@ export interface TwitchServiceState {
   readonly verificationUri: string | null;
   readonly error: string | null;
   readonly channels: Readonly<Record<Side, ChannelInfo | null>>;
+  /** Local controls only; never projected into overlay meta or snapshots. */
+  readonly sharedChat: {
+    readonly partners: readonly ChannelInfo[];
+    /** True only when configured A and B are known to share a current session. */
+    readonly sharesSession: boolean;
+    /** Monotone across connections; only explicit session changes increment it. */
+    readonly endedRevision: number;
+  };
 }
 
 export interface TwitchService {
@@ -68,6 +80,8 @@ export interface TwitchService {
    * user when `a` is omitted. `b: null` removes side B.
    */
   setChannels(logins: { readonly a?: string; readonly b?: string | null }): Promise<void>;
+  /** Explicit host consent; refuses stale suggestions or an already configured B. */
+  useSharedChatPartner(userId: string): Promise<void>;
   /**
    * Sends one message to each listed side's chat (deduplicated when both sides are in the same
    * Shared Chat session). Never throws for drops: returns per-side outcome.
@@ -168,6 +182,8 @@ export function createTwitchService(
   const dedupe = { envelopes: createLruSet(), messages: createLruSet() };
   const sharedChat = createSharedChatTracker();
   let sharedChatRevision = 0;
+  let sharedChatEndedRevision = 0;
+  let sharedChatPartners: readonly ChannelInfo[] = [];
   const tokens = createTokenManager({
     clientId: options.clientId,
     dataDir: options.dataDir,
@@ -214,6 +230,15 @@ export function createTwitchService(
       verificationUri: device?.verificationUri ?? null,
       error: redact(notices || null),
       channels: { A: channels.A, B: channels.B },
+      sharedChat: {
+        partners: sharedChatPartners,
+        endedRevision: sharedChatEndedRevision,
+        sharesSession: Boolean(
+          channels.A &&
+          channels.B &&
+          sharedChat.sharesSession(channels.A.userId, channels.B.userId),
+        ),
+      },
     };
   }
 
@@ -240,12 +265,13 @@ export function createTwitchService(
     validateTimer.unref();
   }
 
-  async function stopEventSub(): Promise<void> {
+  async function stopEventSub(keepSharedChat = false): Promise<void> {
     eventSubGeneration += 1;
     const client = eventSub;
     eventSub = null;
     sharedChatRevision += 1;
-    sharedChat.clear();
+    if (!keepSharedChat) sharedChat.clear();
+    sharedChatPartners = [];
     if (client) await client.stop();
   }
 
@@ -382,8 +408,8 @@ export function createTwitchService(
     return { login: self.login, displayName: self.login, userId: self.userId };
   }
 
-  async function connectEventSub(): Promise<void> {
-    const stopping = stopEventSub();
+  async function connectEventSub(keepSharedChat = false): Promise<void> {
+    const stopping = stopEventSub(keepSharedChat);
     const gen = eventSubGeneration;
     await stopping;
     if (gen !== eventSubGeneration) return;
@@ -402,8 +428,7 @@ export function createTwitchService(
       },
       onSharedChat: (change) => {
         if (eventSub === client) {
-          sharedChatRevision += 1;
-          sharedChat.apply(change);
+          void applySharedChat(change);
         }
       },
       now,
@@ -474,11 +499,38 @@ export function createTwitchService(
   async function seedSharedChat(): Promise<void> {
     const client = eventSub;
     const a = channels.A;
-    if (!a || !channels.B) return;
+    if (!a) return;
     const revision = sharedChatRevision;
     const change = await fetchSharedChatSession(helix, a.userId);
     // EventSub changes observed during the lookup are newer than its HTTP snapshot.
-    if (change && eventSub === client && revision === sharedChatRevision) sharedChat.apply(change);
+    if (change && eventSub === client && revision === sharedChatRevision)
+      await applySharedChat(change);
+  }
+
+  async function applySharedChat(change: SharedChatChange): Promise<void> {
+    const a = channels.A;
+    if (!a) return;
+    const wasActive = sharedChat.participants(a.userId).length > 0;
+    sharedChat.apply(change);
+    const members = sharedChat.participants(a.userId);
+    // An explicit end is useful even if the connect-time seed failed or missed begin.
+    if (members.length === 0 && (wasActive || change.kind === 'end')) sharedChatEndedRevision += 1;
+    const revision = ++sharedChatRevision;
+    sharedChatPartners = [];
+    emit();
+    if (channels.B || members.length < 2) return;
+    // Helix Get Users accepts at most 100 IDs. Bound and dedupe untrusted membership.
+    const ids = [...new Set(members.filter((id) => id !== a.userId))].slice(0, 100);
+    try {
+      const users = await getUsers(helix, { ids });
+      if (revision !== sharedChatRevision || channels.A?.userId !== a.userId || channels.B) return;
+      sharedChatPartners = users
+        .filter((user) => ids.includes(user.userId) && normalizeLogin(user.login) === user.login)
+        .sort((left, right) => left.login.localeCompare(right.login));
+      emit();
+    } catch {
+      // Discovery is optional. Manual channel entry and the chat connection keep working.
+    }
   }
 
   function cancelAuth(): void {
@@ -693,6 +745,27 @@ export function createTwitchService(
       emit();
       // Resubscribing means a new socket: simplest correct way to change the subscription set.
       if (changed || !eventSub || connection === 'error') await connectEventSub();
+    },
+
+    async useSharedChatPartner(userId) {
+      const a = channels.A;
+      const partner = sharedChatPartners.find((user) => user.userId === userId);
+      if (!identity)
+        throw new ChannelLookupError('not-signed-in', 'Connect Twitch before choosing channels.');
+      if (!a || channels.B || !partner) {
+        throw new ChannelLookupError(
+          'selection-changed',
+          'Shared Chat changed or channel B is already set. Refresh and try again.',
+        );
+      }
+      // Membership and identity were resolved through Helix. Commit synchronously so a stale
+      // second click cannot replace B, then reconnect with the explicitly selected channel.
+      channels = { A: a, B: partner };
+      sharedChatPartners = [];
+      partnerNotice = null;
+      emit();
+      // A is unchanged and membership is already known: keep say-once effective while seeding.
+      await connectEventSub(true);
     },
 
     async say(sides, message) {

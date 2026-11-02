@@ -90,6 +90,7 @@ const CHANNEL_LOOKUP_STATUS: Readonly<Record<ChannelLookupError['code'], number>
   'invalid-login': 400,
   'not-found': 400,
   'not-signed-in': 409,
+  'selection-changed': 409,
   failed: 502,
 };
 
@@ -217,6 +218,8 @@ export function createApp(options: AppOptions): App {
   let twitch: TwitchService | null = null;
   let twitchSetupError: string | null = null;
   let lastChat: ControlState['lastChat'] = null;
+  let observedSharedChatEnd = 0;
+  let sharedChatEndedRound: string | null = null;
   const helpAnnouncement = createHelpAnnouncer();
   const lastAnnouncements: Partial<Record<Side, SentAnnouncement>> = {};
   let lastMetaJson = '';
@@ -276,7 +279,13 @@ export function createApp(options: AppOptions): App {
   }
 
   function twitchState(): TwitchServiceState {
-    const blank = { login: null, userId: null, userCode: null, verificationUri: null } as const;
+    const blank = {
+      login: null,
+      userId: null,
+      userCode: null,
+      verificationUri: null,
+      sharedChat: { partners: [], endedRevision: 0, sharesSession: false },
+    } as const;
     if (demo) return { ...blank, status: 'demo', error: null, channels: { ...demoChannels } };
     if (twitch === null) {
       const missing = twitchSetupError === MISSING_CLIENT_ID_ERROR;
@@ -313,7 +322,14 @@ export function createApp(options: AppOptions): App {
 
   /** Team overrides survive channel saves and every Twitch state/reconnect notification. */
   function syncLiveLabels(): void {
-    const { channels } = twitchState();
+    const { channels, sharedChat } = twitchState();
+    if (sharedChat.endedRevision > observedSharedChatEnd) {
+      const snapshot = runtime.snapshot();
+      if (snapshot.phase === 'active' || snapshot.phase === 'revealing') {
+        sharedChatEndedRound = snapshot.roundId;
+      }
+    }
+    observedSharedChatEnd = sharedChat.endedRevision;
     const defaults = demo ? DEMO_LABELS : LIVE_DEFAULT_LABELS;
     const label = (side: Side): string => {
       const override = labelOverride[side];
@@ -355,7 +371,14 @@ export function createApp(options: AppOptions): App {
     if (update.type === 'labels') publishMetaIfChanged();
     else if (update.type === 'round') hub?.broadcast({ type: 'round', round: update.round });
     else {
-      if (!demo) sendAnnouncement(helpAnnouncement(update.snapshot, runtime.labels()));
+      if (!demo)
+        sendAnnouncement(
+          helpAnnouncement(
+            update.snapshot,
+            runtime.labels(),
+            twitchState().sharedChat.sharesSession,
+          ),
+        );
       hub?.broadcast({ type: 'snapshot', snapshot: update.snapshot });
     }
   });
@@ -457,6 +480,51 @@ export function createApp(options: AppOptions): App {
     },
     '/api/snapshot': { GET: (_request, response, url) => sendSnapshot(response, url) },
     '/api/state': { GET: (request, response) => sendJson(response, 200, controlState(request)) },
+    // Separate local-only endpoint: broadcaster suggestions never enter the overlay protocol.
+    '/api/shared-chat': {
+      GET: (_request, response) => {
+        const state = twitchState();
+        const snapshot = runtime.snapshot();
+        sendJson(response, 200, {
+          partners: !state.channels.B ? state.sharedChat.partners : [],
+          notice:
+            sharedChatEndedRound !== null &&
+            sharedChatEndedRound === snapshot.roundId &&
+            (snapshot.phase === 'active' || snapshot.phase === 'revealing')
+              ? 'Shared Chat ended. This round keeps running and channel B stays selected.'
+              : null,
+        });
+      },
+      POST: async (request, response) => {
+        const body = await readJsonBody(request, SMALL_BODY_LIMIT);
+        if (
+          typeof body !== 'object' ||
+          body === null ||
+          !('userId' in body) ||
+          typeof body.userId !== 'string' ||
+          body.userId.length === 0 ||
+          body.userId.length > 100
+        ) {
+          throw new HttpError(400, 'Choose a detected Shared Chat partner.');
+        }
+        const phase = runtime.snapshot().phase;
+        if (phase === 'active' || phase === 'revealing') {
+          throw new HttpError(409, 'Wait for the round to finish before choosing channel B.');
+        }
+        const service = requireTwitch(response);
+        if (!service) return;
+        try {
+          await service.useSharedChatPartner(body.userId);
+        } catch (error) {
+          if (error instanceof ChannelLookupError) {
+            throw new HttpError(CHANNEL_LOOKUP_STATUS[error.code], error.message);
+          }
+          throw new HttpError(502, 'Could not select the Shared Chat partner. Try manual entry.');
+        }
+        syncLiveLabels();
+        sendJson(response, 200, { channels: twitchState().channels });
+      },
+    },
     '/api/call': {
       POST: async (request, response) => {
         const parsed = parseCallRequest(await readJsonBody(request, CALL_BODY_LIMIT));

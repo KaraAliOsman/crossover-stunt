@@ -130,7 +130,8 @@ subscription failure of channel B only drops B and keeps reading A); dedupe enve
 `metadata.message_id` (bounded LRU 2 000); validate notification payload shape before
 `normalizeChat`; drop events whose origin is neither channel. Helix Send Chat: queue with
 ≤ 20 messages / 30 s, check `is_sent` / `drop_reason`. Shared Chat: track
-`channel.shared_chat.begin/end` (no auth) when cheap; if A and B share a session, `say` sends once.
+`channel.shared_chat.begin/update/end` for A even when B is unset, plus a best-effort
+Helix Get Shared Chat Session seed on connect; if A and B share a session, `say` sends once.
 Errors surfaced through `getState().error` must never contain tokens.
 
 `beginAuth()` refuses an existing identity in `connected`, `connecting` or `reconnecting` with
@@ -195,6 +196,31 @@ path uses fades and brightness only, without the physical lift or scale. Debug f
 Chromium measurements, never evidence of OBS CEF performance.
 
 ## Control panel (`public/control/`) and dev page (`public/dev/`)
+
+Shared Chat discovery stays outside the frozen overlay protocol. TwitchService's local state
+contains Helix-resolved partner channels and an explicit-session-end revision. The server exposes
+`GET /api/shared-chat` as `{ partners, notice }`, only to local controls; it is unavailable through
+room tokens, and neither snapshots nor overlay WebSockets carry those fields. Suggestions are
+hidden when B is configured. One partner gets a **Use as channel B** button; two or more get a
+picker. `POST /api/shared-chat` with `{ userId }` is explicit host consent, protected by the same
+Origin/JSON/local checks as channel saves. It refuses an active/revealing round, a stale candidate
+or an already configured B. Selection preserves A and the selected mode.
+Its reconnect retains the already-known session membership so an immediate CALL still sends once
+while the replacement seed is pending.
+
+The service watches A even before B exists. Begin/update resolves up to 100 unique partner IDs
+through the existing Get Users helper. Revisions discard stale HTTP seeds and user lookups after
+new events, channel changes or stop. Seed/user-lookup failure leaves manual entry working and
+does not fail chat. An explicit end still produces a revision if the seed had failed. The server
+latches an end notice to the currently active/revealing round without dropping B or altering its
+deadline; RESET/new round clears its relevance. Reconnect alone does not create an end notice.
+The operator reported a two-channel/one-viewer live Shared Chat check on 2026-11-02 with OBS
+recordings: consent pairing, source-stream credit, one shared announcement and end-mid-round
+preservation all worked. OpenAI Codex did not observe it; see TWITCH_NOTES for scope/evidence.
+The local service state also reports whether configured A+B share a known session. Help copy
+uses that flag to direct Shared Chat viewers to the other stream page; independent chats keep
+their existing invitation. The 500-character cap and one-time/send-once behavior are unchanged.
+That copy fix is locally regression-tested; multi-partner and failure cases remain fake-tested.
 
 Control (`index.html`, `control.css`, `control.js`, `pixelfont.js`, `artwork.js`) — polls
 `GET /api/state` every 1 s:

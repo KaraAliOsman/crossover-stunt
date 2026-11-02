@@ -99,7 +99,11 @@ export function announcementFor(
 }
 
 /** Only the ready chat gets the crossover invitation, while exactly one side is ready. */
-export function helpAnnouncementFor(snapshot: Snapshot, labels: Labels): Announcement | null {
+export function helpAnnouncementFor(
+  snapshot: Snapshot,
+  labels: Labels,
+  sharedChat = false,
+): Announcement | null {
   if (
     snapshot.mode !== 'crossover' ||
     snapshot.phase !== 'active' ||
@@ -109,19 +113,26 @@ export function helpAnnouncementFor(snapshot: Snapshot, labels: Labels): Announc
   const ready = snapshot.sides.A.ready ? 'A' : 'B';
   const other = ready === 'A' ? 'B' : 'A';
   const remaining = Math.max(0, snapshot.sides[other].quorum - snapshot.sides[other].participants);
+  const instruction = sharedChat
+    ? `Shared Chat counts the stream you type from: open ${labels[other]}'s stream and type there`
+    : `Hop into ${labels[other]}'s chat and type anything`;
   return {
     sides: [ready],
     message: clamp(
-      `${labels[ready]} is done! ${labels[other]} still needs ${remaining} more. Hop into ${labels[other]}'s chat and type anything (you count for both sides).`,
+      `${labels[ready]} is done! ${labels[other]} still needs ${remaining} more. ${instruction} (you count for both sides).`,
     ),
   };
 }
 
 /** At most once per round; keep only the last 16 eligible round IDs. */
-export function createHelpAnnouncer(): (snapshot: Snapshot, labels: Labels) => Announcement | null {
+export function createHelpAnnouncer(): (
+  snapshot: Snapshot,
+  labels: Labels,
+  sharedChat?: boolean,
+) => Announcement | null {
   const seen = new Set<string>();
-  return (snapshot, labels) => {
-    const next = helpAnnouncementFor(snapshot, labels);
+  return (snapshot, labels, sharedChat = false) => {
+    const next = helpAnnouncementFor(snapshot, labels, sharedChat);
     if (!next || !snapshot.roundId || seen.has(snapshot.roundId)) return null;
     seen.add(snapshot.roundId);
     if (seen.size > 16) {

@@ -5,7 +5,12 @@ import { crc32, deflateSync } from 'node:zlib';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { parseArtwork } from '../../src/engine/artwork.js';
 import type { Side, Snapshot, SnapshotSide, StuntMode } from '../../src/engine/types.js';
-import type { CallRequest, ControlState, DemoChatRequest } from '../../src/shared/protocol.js';
+import type {
+  CallRequest,
+  ChannelInfo,
+  ControlState,
+  DemoChatRequest,
+} from '../../src/shared/protocol.js';
 
 /*
  * Control panel and SIMULATED injector in isolation: public/ is served from disk and every
@@ -110,6 +115,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** In-memory stand-in for the server: records POSTs and evolves ControlState like the API. */
 class MockServer {
   state: ControlState;
+  sharedChat: { partners: ChannelInfo[]; notice: string | null } = { partners: [], notice: null };
   offline = false;
   readonly posts: RecordedPost[] = [];
   /** Replies that replace the default behaviour for a path (error injection). */
@@ -201,6 +207,15 @@ class MockServer {
         });
         return { status: 200, body: { ok: true } };
       }
+      case '/api/shared-chat': {
+        const partner = isRecord(body)
+          ? this.sharedChat.partners.find((user) => user.userId === body.userId)
+          : null;
+        if (this.state.channels.B || !partner)
+          return { status: 409, body: { error: 'Selection changed' } };
+        this.patch({ channels: { ...this.state.channels, B: partner } });
+        return { status: 200, body: { ok: true } };
+      }
       case '/api/auth/start':
         this.patch({
           twitch: {
@@ -266,6 +281,11 @@ async function handle(route: Route, mock: MockServer): Promise<void> {
       contentType: request.headers()['content-type'] ?? '',
     });
     const reply = mock.overrides.get(url.pathname) ?? mock.handlePost(url.pathname, body);
+    await fulfillJson(route, reply.status, reply.body);
+    return;
+  }
+  if (url.pathname === '/api/shared-chat') {
+    const reply = mock.overrides.get(url.pathname) ?? { status: 200, body: mock.sharedChat };
     await fulfillJson(route, reply.status, reply.body);
     return;
   }
@@ -852,6 +872,99 @@ test('layout radios rewrite both local URLs and the private partner Copy URL', a
   await shot(page, 'on-stream-layout');
   await page.getByRole('radio', { name: 'Full', exact: true }).check();
   expect(await page.locator('#url-A').inputValue()).toBe(mock.state.overlayUrls.A);
+  expect(problems).toEqual([]);
+});
+
+for (const count of [1, 3]) {
+  test(`Shared Chat: ${count} partner suggestions require host consent`, async ({ page }) => {
+    const mock = new MockServer(false);
+    mock.patch({ twitch: { ...mock.state.twitch, status: 'connected', login: 'pixelpilot' } });
+    mock.sharedChat.partners = Array.from({ length: count }, (_, i) => ({
+      userId: `partner-${i}`,
+      login: `partner_${i}`,
+      displayName: `Partner ${i}`,
+    }));
+    const problems = await open(page, mock);
+    await expect(page.locator('#shared-chat-pairing')).toBeVisible();
+    expect(mock.postsTo('/api/shared-chat')).toHaveLength(0);
+    expect(mock.state.channels.B).toBeNull();
+    if (count === 1) {
+      await expect(page.locator('#shared-chat-detected')).toHaveText(
+        'Shared Chat with partner_0 detected - Use as channel B',
+      );
+      await expect(page.locator('#shared-chat-picker')).toBeHidden();
+    } else {
+      await expect(page.getByLabel('Shared Chat partner')).toBeVisible();
+      await page.getByLabel('Shared Chat partner').selectOption('partner-2');
+    }
+    await mkdir(SHOTS_DIR, { recursive: true });
+    await page
+      .locator('#channels')
+      .screenshot({ path: join(SHOTS_DIR, `shared-chat-${count}-partners.png`) });
+    await page.getByRole('button', { name: 'Use as channel B', exact: true }).click();
+    await expect.poll(() => mock.postsTo('/api/shared-chat').length).toBe(1);
+    expect(mock.postsTo('/api/shared-chat')[0]?.body).toEqual({
+      userId: count === 1 ? 'partner-0' : 'partner-2',
+    });
+    await expect(page.locator('#shared-chat-pairing')).toBeHidden();
+    expect(mock.postsTo('/api/channels')).toHaveLength(0);
+    expect(problems).toEqual([]);
+  });
+}
+
+test('Shared Chat: configured B stays selected when the session ends mid-round', async ({
+  page,
+}) => {
+  const mock = new MockServer(false);
+  const partner = {
+    userId: 'already-set',
+    login: 'current_partner',
+    displayName: 'Current partner',
+  };
+  mock.patch({ channels: { ...mock.state.channels, B: partner } });
+  mock.sharedChat.partners = [
+    { userId: 'different', login: 'other_partner', displayName: 'Other partner' },
+  ];
+  const problems = await open(page, mock);
+  await expect(page.locator('#shared-chat-pairing')).toBeHidden();
+  mock.patchSnapshot({
+    phase: 'active',
+    roundId: 'shared-active',
+    startedAtMs: Date.now(),
+    deadlineAtMs: Date.now() + 45000,
+  });
+  mock.sharedChat = {
+    partners: [],
+    notice: 'Shared Chat ended. This round keeps running and channel B stays selected.',
+  };
+  await expect(page.locator('#shared-chat-notice')).toContainText('round keeps running');
+  await expect(page.locator('#channel-b')).toHaveValue('current_partner');
+  expect(mock.state.snapshot.phase).toBe('active');
+  expect(mock.posts).toHaveLength(0);
+  expect(problems).toEqual([]);
+});
+
+test('Shared Chat: failed discovery leaves manual setup usable and running rounds block pairing', async ({
+  page,
+}) => {
+  const mock = new MockServer(false);
+  mock.overrides.set('/api/shared-chat', { status: 503, body: { error: 'Lookup unavailable' } });
+  const problems = await open(page, mock);
+  await expect(page.locator('#shared-chat-pairing')).toBeHidden();
+  await expect(page.locator('#channels-save')).toBeEnabled();
+  await page.locator('#channel-b').fill('manual_partner');
+  mock.overrides.delete('/api/shared-chat');
+  mock.sharedChat.partners = [{ userId: 'p', login: 'partner', displayName: 'Partner' }];
+  mock.patchSnapshot({
+    phase: 'active',
+    roundId: 'running',
+    startedAtMs: Date.now(),
+    deadlineAtMs: Date.now() + 45000,
+  });
+  await expect(page.locator('#shared-chat-pairing')).toBeVisible();
+  await expect(page.locator('#shared-chat-use')).toBeDisabled();
+  await expect(page.locator('#channel-b')).toHaveValue('manual_partner');
+  expect(mock.postsTo('/api/shared-chat')).toHaveLength(0);
   expect(problems).toEqual([]);
 });
 

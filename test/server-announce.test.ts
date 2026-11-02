@@ -115,6 +115,24 @@ describe('duplicate-safe announcements (Twitch msg_duplicate)', () => {
 });
 
 describe('one-time help invitation', () => {
+  it('directs Shared Chat viewers to the other stream page and still invites once', () => {
+    for (const readySide of ['A', 'B'] as const) {
+      const next = createHelpAnnouncer();
+      const waiting = snapshot(
+        'crossover',
+        side(readySide === 'A' ? 1 : 0, 1),
+        side(readySide === 'B' ? 1 : 0, 1),
+      );
+      const names = { A: 'efaoangssm', B: 'efaoangsam' };
+      const other = readySide === 'A' ? 'B' : 'A';
+      expect(next(waiting, names, true)).toEqual({
+        sides: [readySide],
+        message: `${names[readySide]} is done! ${names[other]} still needs 1 more. Shared Chat counts the stream you type from: open ${names[other]}'s stream and type there (you count for both sides).`,
+      });
+      expect(next(waiting, names, true)).toBeNull();
+      expect(next(waiting, names, false)).toBeNull();
+    }
+  });
   it('targets the ready side exactly once per round and remains silent outside active crossover', () => {
     const next = createHelpAnnouncer();
     const readyA = snapshot('crossover', side(3, 3), side(1, 3));
@@ -137,10 +155,18 @@ describe('one-time help invitation', () => {
   it('clamps long labels, supports duplicate-send suffixes and bounds round history', () => {
     const next = createHelpAnnouncer();
     const ready = snapshot('crossover', side(3, 3), side(1, 3));
-    const long = helpAnnouncementFor(ready, { A: 'a'.repeat(400), B: 'b'.repeat(400) })!.message;
-    expect(long.length).toBeLessThanOrEqual(500);
-    const first = distinctAnnouncement(long, null, 0);
-    expect(distinctAnnouncement(long, first, 1).message).toMatch(/\(take 2\)$/);
+    for (const sharedChat of [false, true]) {
+      const long = helpAnnouncementFor(
+        ready,
+        { A: 'a'.repeat(400), B: 'b'.repeat(400) },
+        sharedChat,
+      )!.message;
+      expect(long.length).toBeLessThanOrEqual(500);
+      const first = distinctAnnouncement(long, null, 0);
+      const repeat = distinctAnnouncement(long, first, 1).message;
+      expect(repeat).toMatch(/\(take 2\)$/);
+      expect(repeat.length).toBeLessThanOrEqual(500);
+    }
     for (let i = 0; i < 17; i += 1)
       expect(next({ ...ready, roundId: `r${i}` }, labels)).not.toBeNull();
     expect(next({ ...ready, roundId: 'r16' }, labels)).toBeNull();
